@@ -3,7 +3,11 @@ project(vulkan-tutorial)
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_executable(vulkan-tutorial main.cpp)
+set(SOURCE_FILES
+        src/main.cpp
+    )
+
+add_executable(vulkan-tutorial ${SOURCE_FILES})
 
 # Link with Vulkan.
 find_package(Vulkan REQUIRED)
