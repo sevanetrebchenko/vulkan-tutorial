@@ -1,13 +1,15 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.16)
 project(vulkan-tutorial)
 
 set(CMAKE_CXX_STANDARD 17)
 
 set(SOURCE_FILES
         src/main.cpp
+        src/application.cpp
     )
 
 add_executable(vulkan-tutorial ${SOURCE_FILES})
+target_include_directories(vulkan-tutorial PRIVATE "${PROJECT_SOURCE_DIR}/include")
 
 # Link with Vulkan.
 find_package(Vulkan REQUIRED)
