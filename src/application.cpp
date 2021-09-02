@@ -71,8 +71,9 @@ namespace VT {
 		std::vector<VkExtensionProperties> supportedExtensions;
 		GetSupportedExtensions(supportedExtensions);
 
+		// Get
 		std::vector<const char*> desiredExtensions;
-		GetRequiredExtensions(desiredExtensions);
+		GetDesiredExtensions(desiredExtensions);
 
 		if (!CheckInstanceExtensions(supportedExtensions, desiredExtensions)) {
 			throw std::runtime_error("Requested extensions not supported.");
@@ -161,7 +162,7 @@ namespace VT {
 		return true;
 	}
 
-	void Application::GetRequiredExtensions(std::vector<const char*>& extensions) {
+	void Application::GetDesiredExtensions(std::vector<const char*>& extensions) {
 		unsigned glfwExtensionCount = 0;
 		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 

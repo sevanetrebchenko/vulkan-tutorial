@@ -26,7 +26,7 @@ namespace VT {
 			void InitializeVKInstance();
 
 			void GetSupportedExtensions(std::vector<VkExtensionProperties>& extensionData);
-			void GetRequiredExtensions(std::vector<const char*>& extensions);
+			void GetDesiredExtensions(std::vector<const char*>& extensions);
 
 			bool CheckInstanceExtensions(const std::vector<VkExtensionProperties>& supportedExtensions, const std::vector<const char*>& desiredExtensions);
 			bool CheckValidationLayers(std::vector<const char*>& validationLayerData);
