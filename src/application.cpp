@@ -71,7 +71,7 @@ namespace VT {
 		std::vector<VkExtensionProperties> supportedExtensions;
 		GetSupportedExtensions(supportedExtensions);
 
-		// Get
+		// Get desired extensions.
 		std::vector<const char*> desiredExtensions;
 		GetDesiredExtensions(desiredExtensions);
 
@@ -92,8 +92,8 @@ namespace VT {
 				throw std::runtime_error("Requested validation layers not available.");
 			}
 
-			createInfo.ppEnabledLayerNames = validationLayerNames.data();
 			createInfo.enabledLayerCount = validationLayerNames.size();
+			createInfo.ppEnabledLayerNames = validationLayerNames.data();
 		}
 		else {
 			createInfo.enabledLayerCount = 0; // Don't use any validation layers.
@@ -101,7 +101,7 @@ namespace VT {
 
 		// Create Vulkan instance.
 		if (vkCreateInstance(&createInfo, nullptr, &instance_) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create instance!");
+			throw std::runtime_error("Failed to create Vulkan instance.");
 		}
 	}
 
