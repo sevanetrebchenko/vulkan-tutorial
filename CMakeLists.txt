@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(SOURCE_FILES
         src/main.cpp
         src/application.cpp
+        src/queue_family_indices.cpp
     )
 
 add_executable(vulkan-tutorial ${SOURCE_FILES})

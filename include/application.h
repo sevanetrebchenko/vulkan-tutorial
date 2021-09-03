@@ -7,7 +7,8 @@
 
 #include <vulkan/vulkan.h>
 #include <vector>
-#include <optional>
+
+#include "queue_family_indices.h"
 
 namespace VT {
 
@@ -19,13 +20,6 @@ namespace VT {
 			void Run();
 
 		private:
-			// Data declaration.
-			struct QueueFamilyIndices {
-				bool IsComplete() const;
-
-				std::optional<unsigned> graphicsFamily_;
-			};
-
 			// Functions.
 			static VKAPI_ATTR VkBool32 VKAPI_CALL DebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void* userData);
 

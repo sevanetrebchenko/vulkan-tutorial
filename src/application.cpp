@@ -22,6 +22,14 @@ namespace VT {
 		Shutdown();
 	}
 
+	VkBool32 Application::DebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void* userData) {
+		if (severity > VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+			std::cerr << callbackData->pMessage << std::endl;
+		}
+
+		return VK_FALSE; // Returns true if the function call that triggered the layer should be aborted. Normally used to test the layers themselves.
+	}
+
 	void Application::Initialize() {
 		InitializeGLFW();
 		InitializeVKInstance();
@@ -119,6 +127,25 @@ namespace VT {
 		}
 	}
 
+	void Application::InitializeDebugMessenger() {
+		if (!enableValidationLayers_) {
+			return;
+		}
+
+		VkDebugUtilsMessengerCreateInfoEXT createInfo { };
+		SetupDebugMessengerUtils(createInfo);
+
+		auto function = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance_, "vkCreateDebugUtilsMessengerEXT");
+		if (!function) {
+			throw std::runtime_error("Failed to find function to create debug messenger.");
+		}
+
+		bool result = function(instance_, &createInfo, nullptr, &messenger_);
+		if (result != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create debug messenger.");
+		}
+	}
+
 	void Application::InitializePhysicalDevice() {
 		physicalDevice_ = VK_NULL_HANDLE;
 
@@ -127,6 +154,55 @@ namespace VT {
 
 		// Check found devices for compatibility.
 		CheckPhysicalDevices(physicalDevices);
+	}
+
+	// Assumes messenger info has been initialized.
+	void Application::SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo) {
+		messengerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+		messengerInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+		messengerInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+		messengerInfo.pfnUserCallback = DebugMessageCallback;
+		messengerInfo.pUserData = nullptr; // No user data.
+	}
+
+	void Application::GetSupportedExtensions(std::vector<VkExtensionProperties>& extensionData) {
+		unsigned extensionCount = 0;
+		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr); // Get the number of extensions.
+
+		extensionData.resize(extensionCount);
+		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionData.data()); // Get extension data.
+	}
+
+	void Application::GetDesiredExtensions(std::vector<const char*>& extensions) {
+		unsigned glfwExtensionCount = 0;
+		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+		extensions = std::vector<const char*>(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
+		if (enableValidationLayers_) {
+			// Emplace debug logger extension.
+			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+		}
+	}
+
+	void Application::GetSupportedPhysicalDevices(std::vector<VkPhysicalDevice>& deviceData) {
+		unsigned numDevices = 0;
+		vkEnumeratePhysicalDevices(instance_, &numDevices, nullptr); // Query number of available physical devices.
+
+		if (numDevices <= 0) {
+			throw std::runtime_error("No available physical devices for Vulkan to work with.");
+		}
+
+		deviceData = std::vector<VkPhysicalDevice>(numDevices);
+		vkEnumeratePhysicalDevices(instance_, &numDevices, deviceData.data());
+	}
+
+	void Application::GetSupportedQueueFamilies(const VkPhysicalDevice& physicalDevice, std::vector<VkQueueFamilyProperties>& queueData) {
+		unsigned numQueueFamilies = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numQueueFamilies, nullptr);
+
+		queueData = std::vector<VkQueueFamilyProperties>(numQueueFamilies);
+		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numQueueFamilies, queueData.data());
 	}
 
 	bool Application::CheckInstanceExtensions(const std::vector<VkExtensionProperties>& supportedExtensions, const std::vector<const char*>& desiredExtensions) {
@@ -147,14 +223,6 @@ namespace VT {
 		}
 
 		return true;
-	}
-
-	void Application::GetSupportedExtensions(std::vector<VkExtensionProperties>& extensionData) {
-		unsigned extensionCount = 0;
-		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr); // Get the number of extensions.
-
-		extensionData.resize(extensionCount);
-		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionData.data()); // Get extension data.
 	}
 
 	bool Application::CheckValidationLayers(std::vector<const char*>& validationLayerNames) {
@@ -186,66 +254,6 @@ namespace VT {
 		return true;
 	}
 
-	void Application::GetDesiredExtensions(std::vector<const char*>& extensions) {
-		unsigned glfwExtensionCount = 0;
-		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-		extensions = std::vector<const char*>(glfwExtensions, glfwExtensions + glfwExtensionCount);
-
-		if (enableValidationLayers_) {
-			// Emplace debug logger extension.
-			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-		}
-	}
-
-	VkBool32 Application::DebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void* userData) {
-		if (severity > VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-			std::cerr << callbackData->pMessage << std::endl;
-		}
-
-		return VK_FALSE; // Returns true if the function call that triggered the layer should be aborted. Normally used to test the layers themselves.
-	}
-
-	void Application::InitializeDebugMessenger() {
-		if (!enableValidationLayers_) {
-			return;
-		}
-
-		VkDebugUtilsMessengerCreateInfoEXT createInfo { };
-		SetupDebugMessengerUtils(createInfo);
-
-		auto function = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance_, "vkCreateDebugUtilsMessengerEXT");
-		if (!function) {
-			throw std::runtime_error("Failed to find function to create debug messenger.");
-		}
-
-		bool result = function(instance_, &createInfo, nullptr, &messenger_);
-		if (result != VK_SUCCESS) {
-			throw std::runtime_error("Failed to create debug messenger.");
-		}
-	}
-
-	// Assumes messenger info has been initialized.
-	void Application::SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo) {
-		messengerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-		messengerInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-		messengerInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-		messengerInfo.pfnUserCallback = DebugMessageCallback;
-		messengerInfo.pUserData = nullptr; // No user data.
-	}
-
-	void Application::GetSupportedPhysicalDevices(std::vector<VkPhysicalDevice>& deviceData) {
-		unsigned numDevices = 0;
-		vkEnumeratePhysicalDevices(instance_, &numDevices, nullptr); // Query number of available physical devices.
-
-		if (numDevices <= 0) {
-			throw std::runtime_error("No available physical devices for Vulkan to work with.");
-		}
-
-		deviceData = std::vector<VkPhysicalDevice>(numDevices);
-		vkEnumeratePhysicalDevices(instance_, &numDevices, deviceData.data());
-	}
-
 	bool Application::CheckPhysicalDevices(const std::vector<VkPhysicalDevice>& physicalDevices) {
 		for (const VkPhysicalDevice& physicalDevice : physicalDevices) {
 			if (CheckPhysicalDevice(physicalDevice)) {
@@ -271,7 +279,7 @@ namespace VT {
 		return indices.IsComplete();
 	}
 
-	Application::QueueFamilyIndices Application::FindQueueFamilies(const VkPhysicalDevice& physicalDevice) {
+	QueueFamilyIndices Application::FindQueueFamilies(const VkPhysicalDevice& physicalDevice) {
 		QueueFamilyIndices queueFamilyIndices;
 
 		// VkQueueFamilyProperties contains details about the queue family, including suported operations and maximum number of queues that can be created.
@@ -291,18 +299,6 @@ namespace VT {
 		}
 
 		return queueFamilyIndices;
-	}
-
-	void Application::GetSupportedQueueFamilies(const VkPhysicalDevice& physicalDevice, std::vector<VkQueueFamilyProperties>& queueData) {
-		unsigned numQueueFamilies = 0;
-		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numQueueFamilies, nullptr);
-
-		queueData = std::vector<VkQueueFamilyProperties>(numQueueFamilies);
-		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numQueueFamilies, queueData.data());
-	}
-
-	bool Application::QueueFamilyIndices::IsComplete() const {
-		return graphicsFamily_.has_value();
 	}
 
 }
