@@ -35,6 +35,7 @@ namespace VT {
 		InitializeVKInstance();
 		InitializeDebugMessenger();
 		InitializePhysicalDevice();
+		InitializeLogicalDevice();
 	}
 
 	void Application::Update() {
@@ -52,6 +53,8 @@ namespace VT {
 
 			function(instance_, messenger_, nullptr);
 		}
+
+		vkDestroyDevice(logicalDevice_, nullptr);
 
 		vkDestroyInstance(instance_, nullptr); // Optional callback.
 		glfwDestroyWindow(window_);
@@ -109,11 +112,13 @@ namespace VT {
 				throw std::runtime_error("Requested validation layers not available.");
 			}
 
+			validationLayerNames_ = validationLayerNames;
+
 			VkDebugUtilsMessengerCreateInfoEXT messengerCreateInfo { };
 			SetupDebugMessengerUtils(messengerCreateInfo);
 
-			createInfo.enabledLayerCount = validationLayerNames.size();
-			createInfo.ppEnabledLayerNames = validationLayerNames.data();
+			createInfo.enabledLayerCount = validationLayerNames_.size();
+			createInfo.ppEnabledLayerNames = validationLayerNames_.data();
 			createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)(&messengerCreateInfo); // Setup debug messaging during Vulkan instance creation.
 		}
 		else {
@@ -147,13 +152,54 @@ namespace VT {
 	}
 
 	void Application::InitializePhysicalDevice() {
-		physicalDevice_ = VK_NULL_HANDLE;
-
 		std::vector<VkPhysicalDevice> physicalDevices;
 		GetSupportedPhysicalDevices(physicalDevices);
 
 		// Check found devices for compatibility.
-		CheckPhysicalDevices(physicalDevices);
+		if (!CheckPhysicalDevices(physicalDevices)) {
+			throw std::runtime_error("Failed to find compatible physical device.");
+		}
+	}
+
+	void Application::InitializeLogicalDevice() {
+		// Queues are something you submit command buffers to.
+		VkDeviceQueueCreateInfo queueCreateInfo { };
+		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo.queueFamilyIndex = physicalDeviceData_.queueIndices_.graphicsFamily_.value(); // Specify this queue to be a graphics queue - graphics queues run graphics pipelines.
+		queueCreateInfo.queueCount = 1;
+
+		// There can be more than one queue to influence the scheduling order of command buffers.
+		// Queue priority is necessary even if there is only one.
+		float queuePriority = 1.0f;
+		queueCreateInfo.pQueuePriorities = &queuePriority;
+
+		// Create logical device.
+		VkDeviceCreateInfo createInfo { };
+		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		createInfo.pQueueCreateInfos = &queueCreateInfo;
+		createInfo.queueCreateInfoCount = 1;
+
+		createInfo.pEnabledFeatures = &physicalDeviceData_.deviceFeatures;
+		createInfo.enabledExtensionCount = 0;
+
+		if (enableValidationLayers_) {
+			// No distinction between device and instance validation layer specification on up to date Vulkan applications.
+			// Specified for compatibility.
+			createInfo.enabledLayerCount = validationLayerNames_.size();
+			createInfo.ppEnabledLayerNames = validationLayerNames_.data();
+		}
+		else {
+			createInfo.enabledLayerCount = 0;
+		}
+
+		if (vkCreateDevice(physicalDeviceData_.physicalDevice_, &createInfo, nullptr, &logicalDevice_) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create logical device.");
+		}
+
+		// Query the location of the graphics queue to use for rendering.
+		// Since only one graphics queue is being used, index 0;
+		unsigned graphicsQueueIndex = 0;
+		vkGetDeviceQueue(logicalDevice_, physicalDeviceData_.queueIndices_.graphicsFamily_.value(), graphicsQueueIndex, &graphicsQueue_);
 	}
 
 	// Assumes messenger info has been initialized.
@@ -255,14 +301,16 @@ namespace VT {
 	}
 
 	bool Application::CheckPhysicalDevices(const std::vector<VkPhysicalDevice>& physicalDevices) {
+		bool found = false;
+
 		for (const VkPhysicalDevice& physicalDevice : physicalDevices) {
 			if (CheckPhysicalDevice(physicalDevice)) {
-				physicalDevice_ = physicalDevice;
+				found = true;
 				break;
 			}
 		}
 
-		return physicalDevice_ != VK_NULL_HANDLE;
+		return found;
 	}
 
 	bool Application::CheckPhysicalDevice(const VkPhysicalDevice& physicalDevice) {
@@ -275,8 +323,19 @@ namespace VT {
 
 		std::cout << "Found physical device: " << deviceProperties.deviceName << std::endl;
 
-		QueueFamilyIndices indices = FindQueueFamilies(physicalDevice);
-		return indices.IsComplete();
+		QueueFamilyIndices queueFamilyIndices = FindQueueFamilies(physicalDevice);
+
+		if (queueFamilyIndices.IsComplete()) {
+			// Found compatible device.
+			physicalDeviceData_.physicalDevice_ = physicalDevice;
+			physicalDeviceData_.deviceProperties = deviceProperties;
+			physicalDeviceData_.deviceFeatures = deviceFeatures;
+			physicalDeviceData_.queueIndices_ = queueFamilyIndices;
+
+			return true;
+		}
+
+		return false;
 	}
 
 	QueueFamilyIndices Application::FindQueueFamilies(const VkPhysicalDevice& physicalDevice) {

@@ -8,7 +8,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 
-#include "queue_family_indices.h"
+#include "physical_device_data.h"
 
 namespace VT {
 
@@ -31,6 +31,7 @@ namespace VT {
 			void InitializeVKInstance();
 			void InitializeDebugMessenger();
 			void InitializePhysicalDevice();
+			void InitializeLogicalDevice();
 
 			void SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo);
 
@@ -51,13 +52,18 @@ namespace VT {
 			int height_;
 
 			bool enableValidationLayers_;
+			std::vector<const char*> validationLayerNames_;
+
 			GLFWwindow* window_;
 
 			// Vulkan data.
 			VkInstance instance_;
 			VkDebugUtilsMessengerEXT messenger_;
-			VkPhysicalDevice physicalDevice_;
 
+			PhysicalDeviceData physicalDeviceData_;
+
+			VkDevice logicalDevice_;
+			VkQueue graphicsQueue_;
 	};
 
 }
