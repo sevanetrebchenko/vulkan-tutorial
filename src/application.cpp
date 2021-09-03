@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <iostream>
+#include <set>
 
 #include "application.h"
 
@@ -167,20 +168,28 @@ namespace VT {
 
 	void Application::InitializeLogicalDevice() {
 		// Queues are something you submit command buffers to.
-		VkDeviceQueueCreateInfo queueCreateInfo { };
-		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queueCreateInfo.queueFamilyIndex = physicalDeviceData_.queueIndices_.graphicsFamily_.value(); // Specify this queue to be a graphics queue - graphics queues run graphics pipelines.
-		queueCreateInfo.queueCount = 1;
+		// Create structure to hold data for all the desired queue families.
+		std::set<unsigned> uniqueQueueFamilies = {
+			physicalDeviceData_.queueIndices_.graphicsFamily_.value(),
+		    physicalDeviceData_.queueIndices_.presentationFamily_.value()
+		};
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos(uniqueQueueFamilies.size());
 
-		// There can be more than one queue to influence the scheduling order of command buffers.
-		// Queue priority is necessary even if there is only one.
 		float queuePriority = 1.0f;
-		queueCreateInfo.pQueuePriorities = &queuePriority;
+		for (unsigned queueFamily : uniqueQueueFamilies) {
+			VkDeviceQueueCreateInfo queueCreateInfo { };
+			queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			queueCreateInfo.queueFamilyIndex = queueFamily;
+			queueCreateInfo.queueCount = 1;
+			queueCreateInfo.pQueuePriorities = &queuePriority;
+
+			queueCreateInfos.push_back(queueCreateInfo);
+		}
 
 		// Create logical device.
 		VkDeviceCreateInfo createInfo { };
 		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-		createInfo.pQueueCreateInfos = &queueCreateInfo;
+		createInfo.pQueueCreateInfos = queueCreateInfos.data();
 		createInfo.queueCreateInfoCount = 1;
 
 		createInfo.pEnabledFeatures = &physicalDeviceData_.deviceFeatures;
@@ -200,10 +209,15 @@ namespace VT {
 			throw std::runtime_error("Failed to create logical device.");
 		}
 
-		// Query the location of the graphics queue to use for rendering.
-		// Since only one graphics queue is being used, index 0;
+		// Since only one queue of each type is being used, index is 0.
 		unsigned graphicsQueueIndex = 0;
+		unsigned presentationQueueIndex = 0;
+
+		// Query the location of the graphics queue to use for rendering.
 		vkGetDeviceQueue(logicalDevice_, physicalDeviceData_.queueIndices_.graphicsFamily_.value(), graphicsQueueIndex, &graphicsQueue_);
+
+		// Query the location of the presentation queue to be able to present images to the surface.
+		vkGetDeviceQueue(logicalDevice_, physicalDeviceData_.queueIndices_.presentationFamily_.value(), presentationQueueIndex, &presentationQueue_);
 	}
 
 	void Application::InitializeVulkanSurface() {
@@ -363,10 +377,16 @@ namespace VT {
 			const VkQueueFamilyProperties& queueProperties = queueData[i];
 
 			if (queueProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-				// Contains graphics bit - supports graphics.
-				// Found suitable device.
+				// Found suitable device that supports graphics.
 				queueFamilyIndices.graphicsFamily_ = i;
-				break;
+
+				VkBool32 presentationSupport = false;
+				vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface_, &presentationSupport);
+
+				if (presentationSupport) {
+					queueFamilyIndices.presentationFamily_ = i;
+					break;
+				}
 			}
 		}
 

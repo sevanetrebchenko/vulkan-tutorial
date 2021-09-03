@@ -4,7 +4,7 @@
 namespace VT {
 
 	bool QueueFamilyIndices::IsComplete() const {
-		return graphicsFamily_.has_value();
+		return graphicsFamily_.has_value() && presentationFamily_.has_value();
 	}
 
 }

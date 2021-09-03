@@ -10,6 +10,9 @@ namespace VT {
 		[[nodiscard]] bool IsComplete() const;
 
 		std::optional<unsigned> graphicsFamily_;
+		std::optional<unsigned> presentationFamily_; // Queues for handling presenting data to
+													 // the screen could be different from the
+													 // queue family that does graphics.
 	};
 
 }

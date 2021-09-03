@@ -59,14 +59,14 @@ namespace VT {
 
 			// Vulkan data.
 			VkInstance instance_;
+			VkSurfaceKHR surface_;
 			VkDebugUtilsMessengerEXT messenger_;
 
 			PhysicalDeviceData physicalDeviceData_;
 
 			VkDevice logicalDevice_;
 			VkQueue graphicsQueue_;
-
-			VkSurfaceKHR surface_;
+			VkQueue presentationQueue_;
 	};
 
 }
