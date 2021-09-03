@@ -1,8 +1,8 @@
 
 // Standard includes.
 #include <stdexcept>
-#include <vector>
 #include <cstring>
+#include <iostream>
 
 #include "application.h"
 
@@ -24,9 +24,8 @@ namespace VT {
 
 	void Application::Initialize() {
 		InitializeGLFW();
-
 		InitializeVKInstance();
-		// Check
+		InitializeDebugMessenger();
 	}
 
 	void Application::Update() {
@@ -36,6 +35,15 @@ namespace VT {
 	}
 
 	void Application::Shutdown() {
+		if (enableValidationLayers_) {
+			auto function = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance_, "vkDestroyDebugUtilsMessengerEXT");
+			if (!function) {
+				throw std::runtime_error("Failed to find function for destroying debug messenger.");
+			}
+
+			function(instance_, messenger_, nullptr);
+		}
+
 		vkDestroyInstance(instance_, nullptr); // Optional callback.
 		glfwDestroyWindow(window_);
 		glfwTerminate();
@@ -53,7 +61,7 @@ namespace VT {
 
 	void Application::InitializeVKInstance() {
 		// Create Vulkan instance.
-		VkApplicationInfo appInfo{};
+		VkApplicationInfo appInfo { };
 		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 		appInfo.pApplicationName = "Vulkan Tutorial";
 		appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -63,7 +71,7 @@ namespace VT {
 
 		// Tells the graphics driver which global extensions and validation layers to use.
 		// Global (applies to the entire program).
-		VkInstanceCreateInfo createInfo{};
+		VkInstanceCreateInfo createInfo { };
 		createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 		createInfo.pApplicationInfo = &appInfo;
 
@@ -92,11 +100,16 @@ namespace VT {
 				throw std::runtime_error("Requested validation layers not available.");
 			}
 
+			VkDebugUtilsMessengerCreateInfoEXT messengerCreateInfo { };
+			SetupDebugMessengerUtils(messengerCreateInfo);
+
 			createInfo.enabledLayerCount = validationLayerNames.size();
 			createInfo.ppEnabledLayerNames = validationLayerNames.data();
+			createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)(&messengerCreateInfo); // Setup debug messaging during Vulkan instance creation.
 		}
 		else {
 			createInfo.enabledLayerCount = 0; // Don't use any validation layers.
+			createInfo.pNext = nullptr; // Don't log debug messages during instance creation.
 		}
 
 		// Create Vulkan instance.
@@ -172,6 +185,42 @@ namespace VT {
 			// Emplace debug logger extension.
 			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 		}
+	}
+
+	VkBool32 Application::DebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void* userData) {
+		if (severity > VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+			std::cerr << callbackData->pMessage << std::endl;
+		}
+
+		return VK_FALSE; // Returns true if the function call that triggered the layer should be aborted. Normally used to test the layers themselves.
+	}
+
+	void Application::InitializeDebugMessenger() {
+		if (!enableValidationLayers_) {
+			return;
+		}
+
+		VkDebugUtilsMessengerCreateInfoEXT createInfo { };
+		SetupDebugMessengerUtils(createInfo);
+
+		auto function = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance_, "vkCreateDebugUtilsMessengerEXT");
+		if (!function) {
+			throw std::runtime_error("Failed to find function to create debug messenger.");
+		}
+
+		bool result = function(instance_, &createInfo, nullptr, &messenger_);
+		if (result != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create debug messenger.");
+		}
+	}
+
+	// Assumes messenger info has been initialized.
+	void Application::SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo) {
+		messengerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+		messengerInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+		messengerInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+		messengerInfo.pfnUserCallback = DebugMessageCallback;
+		messengerInfo.pUserData = nullptr; // No user data.
 	}
 
 }
