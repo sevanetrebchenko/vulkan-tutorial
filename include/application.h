@@ -7,6 +7,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vector>
+#include <optional>
 
 namespace VT {
 
@@ -18,6 +19,16 @@ namespace VT {
 			void Run();
 
 		private:
+			// Data declaration.
+			struct QueueFamilyIndices {
+				bool IsComplete() const;
+
+				std::optional<unsigned> graphicsFamily_;
+			};
+
+			// Functions.
+			static VKAPI_ATTR VkBool32 VKAPI_CALL DebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void* userData);
+
 			void Initialize();
 			void Update();
 			void Shutdown();
@@ -25,27 +36,34 @@ namespace VT {
 			void InitializeGLFW();
 			void InitializeVKInstance();
 			void InitializeDebugMessenger();
+			void InitializePhysicalDevice();
 
 			void SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo);
 
 			void GetSupportedExtensions(std::vector<VkExtensionProperties>& extensionData);
 			void GetDesiredExtensions(std::vector<const char*>& extensions);
+			void GetSupportedPhysicalDevices(std::vector<VkPhysicalDevice>& deviceData);
+			void GetSupportedQueueFamilies(const VkPhysicalDevice& physicalDevice, std::vector<VkQueueFamilyProperties>& queueData);
 
 			bool CheckInstanceExtensions(const std::vector<VkExtensionProperties>& supportedExtensions, const std::vector<const char*>& desiredExtensions);
 			bool CheckValidationLayers(std::vector<const char*>& validationLayerData);
+			bool CheckPhysicalDevices(const std::vector<VkPhysicalDevice>& physicalDevices);
+			bool CheckPhysicalDevice(const VkPhysicalDevice& physicalDevice);
 
-			static VKAPI_ATTR VkBool32 VKAPI_CALL DebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void* userData);
+			QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& physicalDevice);
 
+			// Data.
 			int width_;
 			int height_;
 
 			bool enableValidationLayers_;
-
 			GLFWwindow* window_;
 
-			// Vulkan.
+			// Vulkan data.
 			VkInstance instance_;
 			VkDebugUtilsMessengerEXT messenger_;
+			VkPhysicalDevice physicalDevice_;
+
 	};
 
 }

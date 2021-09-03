@@ -26,6 +26,7 @@ namespace VT {
 		InitializeGLFW();
 		InitializeVKInstance();
 		InitializeDebugMessenger();
+		InitializePhysicalDevice();
 	}
 
 	void Application::Update() {
@@ -116,6 +117,16 @@ namespace VT {
 		if (vkCreateInstance(&createInfo, nullptr, &instance_) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create Vulkan instance.");
 		}
+	}
+
+	void Application::InitializePhysicalDevice() {
+		physicalDevice_ = VK_NULL_HANDLE;
+
+		std::vector<VkPhysicalDevice> physicalDevices;
+		GetSupportedPhysicalDevices(physicalDevices);
+
+		// Check found devices for compatibility.
+		CheckPhysicalDevices(physicalDevices);
 	}
 
 	bool Application::CheckInstanceExtensions(const std::vector<VkExtensionProperties>& supportedExtensions, const std::vector<const char*>& desiredExtensions) {
@@ -221,6 +232,77 @@ namespace VT {
 		messengerInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 		messengerInfo.pfnUserCallback = DebugMessageCallback;
 		messengerInfo.pUserData = nullptr; // No user data.
+	}
+
+	void Application::GetSupportedPhysicalDevices(std::vector<VkPhysicalDevice>& deviceData) {
+		unsigned numDevices = 0;
+		vkEnumeratePhysicalDevices(instance_, &numDevices, nullptr); // Query number of available physical devices.
+
+		if (numDevices <= 0) {
+			throw std::runtime_error("No available physical devices for Vulkan to work with.");
+		}
+
+		deviceData = std::vector<VkPhysicalDevice>(numDevices);
+		vkEnumeratePhysicalDevices(instance_, &numDevices, deviceData.data());
+	}
+
+	bool Application::CheckPhysicalDevices(const std::vector<VkPhysicalDevice>& physicalDevices) {
+		for (const VkPhysicalDevice& physicalDevice : physicalDevices) {
+			if (CheckPhysicalDevice(physicalDevice)) {
+				physicalDevice_ = physicalDevice;
+				break;
+			}
+		}
+
+		return physicalDevice_ != VK_NULL_HANDLE;
+	}
+
+	bool Application::CheckPhysicalDevice(const VkPhysicalDevice& physicalDevice) {
+		VkPhysicalDeviceProperties deviceProperties; // Used for basic device properties, like name, type, and supported Vulkan versions.
+		VkPhysicalDeviceFeatures deviceFeatures; // Used for optional features like texture compression, 64-bit floats, and multi vieport rendering.
+
+		// Query device info.
+		vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+		vkGetPhysicalDeviceFeatures(physicalDevice, &deviceFeatures);
+
+		std::cout << "Found physical device: " << deviceProperties.deviceName << std::endl;
+
+		QueueFamilyIndices indices = FindQueueFamilies(physicalDevice);
+		return indices.IsComplete();
+	}
+
+	Application::QueueFamilyIndices Application::FindQueueFamilies(const VkPhysicalDevice& physicalDevice) {
+		QueueFamilyIndices queueFamilyIndices;
+
+		// VkQueueFamilyProperties contains details about the queue family, including suported operations and maximum number of queues that can be created.
+		std::vector<VkQueueFamilyProperties> queueData;
+		GetSupportedQueueFamilies(physicalDevice, queueData);
+
+		// Find queue family that supports graphics.
+		for (unsigned i = 0; i < queueData.size(); ++i) {
+			const VkQueueFamilyProperties& queueProperties = queueData[i];
+
+			if (queueProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+				// Contains graphics bit - supports graphics.
+				// Found suitable device.
+				queueFamilyIndices.graphicsFamily_ = i;
+				break;
+			}
+		}
+
+		return queueFamilyIndices;
+	}
+
+	void Application::GetSupportedQueueFamilies(const VkPhysicalDevice& physicalDevice, std::vector<VkQueueFamilyProperties>& queueData) {
+		unsigned numQueueFamilies = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numQueueFamilies, nullptr);
+
+		queueData = std::vector<VkQueueFamilyProperties>(numQueueFamilies);
+		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numQueueFamilies, queueData.data());
+	}
+
+	bool Application::QueueFamilyIndices::IsComplete() const {
+		return graphicsFamily_.has_value();
 	}
 
 }
