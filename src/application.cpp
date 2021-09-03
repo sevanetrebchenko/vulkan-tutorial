@@ -338,10 +338,13 @@ namespace VT {
 		return false;
 	}
 
+	// Every operation in Vulkan requires commands to be submitted to a queue.
+	// There are different families of queues, each used for a specific purpose.
+	// This function checks for the existence of the required queue families and the location of the queue that supports graphical operations - the graphics queue.
 	QueueFamilyIndices Application::FindQueueFamilies(const VkPhysicalDevice& physicalDevice) {
 		QueueFamilyIndices queueFamilyIndices;
 
-		// VkQueueFamilyProperties contains details about the queue family, including suported operations and maximum number of queues that can be created.
+		// VkQueueFamilyProperties contains details about the queue family, including supported operations and maximum number of queues that can be created.
 		std::vector<VkQueueFamilyProperties> queueData;
 		GetSupportedQueueFamilies(physicalDevice, queueData);
 
