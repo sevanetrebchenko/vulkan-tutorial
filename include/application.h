@@ -32,6 +32,7 @@ namespace VT {
 			void InitializeDebugMessenger();
 			void InitializePhysicalDevice();
 			void InitializeLogicalDevice();
+			void InitializeVulkanSurface();
 
 			void SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo);
 
@@ -64,6 +65,8 @@ namespace VT {
 
 			VkDevice logicalDevice_;
 			VkQueue graphicsQueue_;
+
+			VkSurfaceKHR surface_;
 	};
 
 }

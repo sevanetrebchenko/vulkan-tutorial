@@ -34,6 +34,7 @@ namespace VT {
 		InitializeGLFW();
 		InitializeVKInstance();
 		InitializeDebugMessenger();
+		InitializeVulkanSurface();
 		InitializePhysicalDevice();
 		InitializeLogicalDevice();
 	}
@@ -54,9 +55,12 @@ namespace VT {
 			function(instance_, messenger_, nullptr);
 		}
 
+		// Functions take optional callbacks.
 		vkDestroyDevice(logicalDevice_, nullptr);
 
-		vkDestroyInstance(instance_, nullptr); // Optional callback.
+		vkDestroySurfaceKHR(instance_, surface_, nullptr); // Surface needs to be destroyed before instance.
+		vkDestroyInstance(instance_, nullptr);
+
 		glfwDestroyWindow(window_);
 		glfwTerminate();
 	}
@@ -200,6 +204,12 @@ namespace VT {
 		// Since only one graphics queue is being used, index 0;
 		unsigned graphicsQueueIndex = 0;
 		vkGetDeviceQueue(logicalDevice_, physicalDeviceData_.queueIndices_.graphicsFamily_.value(), graphicsQueueIndex, &graphicsQueue_);
+	}
+
+	void Application::InitializeVulkanSurface() {
+		if (glfwCreateWindowSurface(instance_, window_, nullptr, &surface_) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create Vulkan window surface.");
+		}
 	}
 
 	// Assumes messenger info has been initialized.
