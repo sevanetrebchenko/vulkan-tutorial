@@ -189,8 +189,8 @@ namespace VT {
 		// Create logical device.
 		VkDeviceCreateInfo createInfo { };
 		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		createInfo.queueCreateInfoCount = queueCreateInfos.size();
 		createInfo.pQueueCreateInfos = queueCreateInfos.data();
-		createInfo.queueCreateInfoCount = 1;
 
 		createInfo.pEnabledFeatures = &physicalDeviceData_.deviceFeatures;
 		createInfo.enabledExtensionCount = 0;
