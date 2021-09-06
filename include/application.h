@@ -79,7 +79,10 @@ namespace VT {
 			VkDevice logicalDevice_;
 			VkQueue graphicsQueue_;
 			VkQueue presentationQueue_;
+
+			SwapChainSupportData swapChainData_;
 			VkSwapchainKHR swapChain_;
+            std::vector<VkImage> swapChainImages_; // Created and cleaned up with swapchain creation/destruction.
 	};
 
 }

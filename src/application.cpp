@@ -239,22 +239,22 @@ namespace VT {
 	}
 
 	void Application::InitializeSwapChain() {
-        SwapChainSupportData swapChainSupportData = QuerySwapChainSupport(physicalDeviceData_.physicalDevice_);
+	    swapChainData_ = QuerySwapChainSupport(physicalDeviceData_.physicalDevice_);
 
-        VkSurfaceFormatKHR surfaceFormat = ChooseSwapChainSurfaceFormat(swapChainSupportData.formats_);
-        VkPresentModeKHR presentationMode = ChooseSwapChainPresentationMode(swapChainSupportData.presentationModes_);
-        VkExtent2D extent = ChooseSwapChainExtent(swapChainSupportData.surfaceCapabilities_);
+	    VkSurfaceFormatKHR surfaceFormat = ChooseSwapChainSurfaceFormat(swapChainData_.formats_);
+	    VkPresentModeKHR presentationMode = ChooseSwapChainPresentationMode(swapChainData_.presentationModes_);
+	    VkExtent2D extent = ChooseSwapChainExtent(swapChainData_.surfaceCapabilities_);
 
         // Request 1 more than minimum to prevent waiting for driver to complete operations before acquiring an image to render to.
-        unsigned swapChainImageCount = swapChainSupportData.surfaceCapabilities_.minImageCount + 1;
-        swapChainImageCount = std::clamp(swapChainImageCount, swapChainImageCount, swapChainSupportData.surfaceCapabilities_.maxImageCount); // maxImageCount = 0 means no maximum number of images.
+        unsigned swapChainImageCount = swapChainData_.surfaceCapabilities_.minImageCount + 1;
+        swapChainImageCount = std::clamp(swapChainImageCount, swapChainImageCount, swapChainData_.surfaceCapabilities_.maxImageCount); // maxImageCount = 0 means no maximum number of images.
 
         // Create swapchain.
         VkSwapchainCreateInfoKHR createInfo { };
         createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         createInfo.surface = surface_;
 
-        createInfo.minImageCount = swapChainImageCount;
+        createInfo.minImageCount = swapChainImageCount; // Implementation may create more images, since only the minimum is specified.
         createInfo.imageFormat = surfaceFormat.format;
         createInfo.imageColorSpace = surfaceFormat.colorSpace;
         createInfo.imageExtent = extent;
@@ -282,7 +282,7 @@ namespace VT {
             createInfo.pQueueFamilyIndices = nullptr;
         }
 
-        createInfo.preTransform = swapChainSupportData.surfaceCapabilities_.currentTransform; // Transformation pre-applied to all swapchain images.
+        createInfo.preTransform = swapChainData_.surfaceCapabilities_.currentTransform; // Transformation pre-applied to all swapchain images.
         createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // Blending with other images.
         createInfo.presentMode = presentationMode;
         createInfo.clipped = VK_TRUE; // Color of obscured pixels does not matter.
@@ -291,6 +291,14 @@ namespace VT {
         if (vkCreateSwapchainKHR(logicalDevice_, &createInfo, nullptr, &swapChain_) != VK_SUCCESS) {
             throw std::runtime_error("failed to create swap chain!");
         }
+
+        // Query the number of created images in the swapchain. Implementation may create more images, since only the minimum is specified.
+        unsigned imageCount = 0;
+        vkGetSwapchainImagesKHR(logicalDevice_, swapChain_, &imageCount, nullptr);
+        swapChainImages_.resize(imageCount);
+
+        // Get images.
+        vkGetSwapchainImagesKHR(logicalDevice_, swapChain_, &imageCount, swapChainImages_.data());
 	}
 
 	// Assumes messenger info has been initialized.
