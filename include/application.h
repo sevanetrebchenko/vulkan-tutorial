@@ -35,6 +35,7 @@ namespace VT {
 			void InitializeLogicalDevice();
 			void InitializeVulkanSurface();
 			void InitializeSwapChain();
+			void InitializeImageViews();
 
 			void SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo);
 
@@ -80,9 +81,11 @@ namespace VT {
 			VkQueue graphicsQueue_;
 			VkQueue presentationQueue_;
 
-			SwapChainSupportData swapChainData_;
 			VkSwapchainKHR swapChain_;
+			VkFormat swapChainImageFormat_;
+			VkExtent2D swapChainExtent_;
             std::vector<VkImage> swapChainImages_; // Created and cleaned up with swapchain creation/destruction.
+	        std::vector<VkImageView> swapChainImageViews_;
 	};
 
 }

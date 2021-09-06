@@ -41,6 +41,7 @@ namespace VT {
 		InitializePhysicalDevice();
 		InitializeLogicalDevice();
 		InitializeSwapChain();
+		InitializeImageViews();
 	}
 
 	void Application::Update() {
@@ -50,7 +51,12 @@ namespace VT {
 	}
 
 	void Application::Shutdown() {
-		// Functions take optional callbacks.
+		// ** Functions take optional callbacks. **
+
+		for (const VkImageView& imageView : swapChainImageViews_) {
+		    vkDestroyImageView(logicalDevice_, imageView, nullptr);
+		}
+
 		vkDestroySwapchainKHR(logicalDevice_, swapChain_, nullptr); // Needs to be destroyed before the logical device.
 		vkDestroyDevice(logicalDevice_, nullptr);
 
@@ -239,15 +245,15 @@ namespace VT {
 	}
 
 	void Application::InitializeSwapChain() {
-	    swapChainData_ = QuerySwapChainSupport(physicalDeviceData_.physicalDevice_);
+	    SwapChainSupportData swapChainSupportData = QuerySwapChainSupport(physicalDeviceData_.physicalDevice_);
 
-	    VkSurfaceFormatKHR surfaceFormat = ChooseSwapChainSurfaceFormat(swapChainData_.formats_);
-	    VkPresentModeKHR presentationMode = ChooseSwapChainPresentationMode(swapChainData_.presentationModes_);
-	    VkExtent2D extent = ChooseSwapChainExtent(swapChainData_.surfaceCapabilities_);
+	    VkSurfaceFormatKHR surfaceFormat = ChooseSwapChainSurfaceFormat(swapChainSupportData.formats_);
+	    VkPresentModeKHR presentationMode = ChooseSwapChainPresentationMode(swapChainSupportData.presentationModes_);
+	    VkExtent2D extent = ChooseSwapChainExtent(swapChainSupportData.surfaceCapabilities_);
 
         // Request 1 more than minimum to prevent waiting for driver to complete operations before acquiring an image to render to.
-        unsigned swapChainImageCount = swapChainData_.surfaceCapabilities_.minImageCount + 1;
-        swapChainImageCount = std::clamp(swapChainImageCount, swapChainImageCount, swapChainData_.surfaceCapabilities_.maxImageCount); // maxImageCount = 0 means no maximum number of images.
+        unsigned swapChainImageCount = swapChainSupportData.surfaceCapabilities_.minImageCount + 1;
+        swapChainImageCount = std::clamp(swapChainImageCount, swapChainImageCount, swapChainSupportData.surfaceCapabilities_.maxImageCount); // maxImageCount = 0 means no maximum number of images.
 
         // Create swapchain.
         VkSwapchainCreateInfoKHR createInfo { };
@@ -282,7 +288,7 @@ namespace VT {
             createInfo.pQueueFamilyIndices = nullptr;
         }
 
-        createInfo.preTransform = swapChainData_.surfaceCapabilities_.currentTransform; // Transformation pre-applied to all swapchain images.
+        createInfo.preTransform = swapChainSupportData.surfaceCapabilities_.currentTransform; // Transformation pre-applied to all swapchain images.
         createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // Blending with other images.
         createInfo.presentMode = presentationMode;
         createInfo.clipped = VK_TRUE; // Color of obscured pixels does not matter.
@@ -291,6 +297,10 @@ namespace VT {
         if (vkCreateSwapchainKHR(logicalDevice_, &createInfo, nullptr, &swapChain_) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create swapchain.");
         }
+
+        // Register final format and extent.
+        swapChainImageFormat_ = surfaceFormat.format;
+        swapChainExtent_ = extent;
 
         // Query the number of created images in the swapchain. Implementation may create more images, since only the minimum is specified.
         unsigned imageCount = 0;
@@ -302,6 +312,38 @@ namespace VT {
         // Get images.
         if (vkGetSwapchainImagesKHR(logicalDevice_, swapChain_, &imageCount, swapChainImages_.data()) != VK_SUCCESS) {
             throw std::runtime_error("Failed to get swapchain images.");
+        }
+	}
+
+	void Application::InitializeImageViews() {
+	    unsigned numImages = swapChainImages_.size();
+
+        // VkImageView objects describe how to access VkImage objects and which parts to access.
+        swapChainImageViews_.resize(numImages);
+
+        for (int i = 0; i < numImages; ++i) {
+            VkImageViewCreateInfo createInfo { };
+            createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            createInfo.image = swapChainImages_[i];
+            createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; // Treat the image as a 2D image.
+            createInfo.format = swapChainImageFormat_;
+
+            // Use default color channel configuration.
+            createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+            // Base images without any resource mipmapping levels / multiple layers.
+            createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            createInfo.subresourceRange.baseMipLevel = 0;
+            createInfo.subresourceRange.levelCount = 1;
+            createInfo.subresourceRange.baseArrayLayer = 0;
+            createInfo.subresourceRange.layerCount = 1;
+
+            if (vkCreateImageView(logicalDevice_, &createInfo, nullptr, &swapChainImageViews_[i]) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create swap chain image views.");
+            }
         }
 	}
 
