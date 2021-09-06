@@ -289,16 +289,20 @@ namespace VT {
         createInfo.oldSwapchain = nullptr; // Swapping between different swapchains requires the old one to be stored.
 
         if (vkCreateSwapchainKHR(logicalDevice_, &createInfo, nullptr, &swapChain_) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create swap chain!");
+            throw std::runtime_error("Failed to create swapchain.");
         }
 
         // Query the number of created images in the swapchain. Implementation may create more images, since only the minimum is specified.
         unsigned imageCount = 0;
-        vkGetSwapchainImagesKHR(logicalDevice_, swapChain_, &imageCount, nullptr);
+        if (vkGetSwapchainImagesKHR(logicalDevice_, swapChain_, &imageCount, nullptr) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to get number of images in swapchain.");
+        }
         swapChainImages_.resize(imageCount);
 
         // Get images.
-        vkGetSwapchainImagesKHR(logicalDevice_, swapChain_, &imageCount, swapChainImages_.data());
+        if (vkGetSwapchainImagesKHR(logicalDevice_, swapChain_, &imageCount, swapChainImages_.data()) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to get swapchain images.");
+        }
 	}
 
 	// Assumes messenger info has been initialized.
@@ -316,7 +320,11 @@ namespace VT {
 
 		if (extensionCount != 0) {
 		    extensionData.resize(extensionCount);
-		    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionData.data()); // Get extension data.
+
+		    // Get extension data.
+		    if (vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionData.data()) != VK_SUCCESS) {
+		        throw std::runtime_error("Failed to get instance extension properties.");
+		    }
 		}
 	}
 
@@ -341,14 +349,20 @@ namespace VT {
 
 	void Application::GetSupportedPhysicalDevices(std::vector<VkPhysicalDevice>& deviceData) {
 		unsigned numDevices = 0;
-		vkEnumeratePhysicalDevices(instance_, &numDevices, nullptr); // Query number of available physical devices.
+
+		// Query number of available physical devices.
+		if (vkEnumeratePhysicalDevices(instance_, &numDevices, nullptr) != VK_SUCCESS) {
+		    throw std::runtime_error("Failed to get number of available physical devices.");
+		}
 
 		if (numDevices <= 0) {
 			throw std::runtime_error("No available physical devices for Vulkan to work with.");
 		}
 
 		deviceData = std::vector<VkPhysicalDevice>(numDevices);
-		vkEnumeratePhysicalDevices(instance_, &numDevices, deviceData.data());
+		if (vkEnumeratePhysicalDevices(instance_, &numDevices, deviceData.data()) != VK_SUCCESS) {
+		    throw std::runtime_error("Failed to get available physical devices.");
+		}
 	}
 
 	void Application::GetSupportedQueueFamilies(const VkPhysicalDevice& physicalDevice, std::vector<VkQueueFamilyProperties>& queueData) {
@@ -363,31 +377,43 @@ namespace VT {
 
 	void Application::GetSupportedPhysicalDeviceExtensions(const VkPhysicalDevice& physicalDevice, std::vector<VkExtensionProperties>& extensions) {
 		unsigned numExtensions = 0;
-		vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &numExtensions, nullptr);
+		if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &numExtensions, nullptr) != VK_SUCCESS) {
+		    throw std::runtime_error("Failed to get number of logical devices.");
+		}
 
 		if (numExtensions != 0) {
 		    extensions = std::vector<VkExtensionProperties>(numExtensions);
-		    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &numExtensions, extensions.data());
+		    if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &numExtensions, extensions.data()) != VK_SUCCESS) {
+		        throw std::runtime_error("Failed to get logical device extension properties.");
+		    }
 		}
 	}
 
 	void Application::GetSupportedSurfaceFormats(const VkPhysicalDevice &physicalDevice, std::vector<VkSurfaceFormatKHR> &surfaceFormatData) {
         unsigned numSurfaceFormats = 0;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface_, &numSurfaceFormats, nullptr);
+        if (vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface_, &numSurfaceFormats, nullptr) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to get number of physical device surface formats.");
+        }
 
         if (numSurfaceFormats != 0) {
             surfaceFormatData = std::vector<VkSurfaceFormatKHR>(numSurfaceFormats);
-            vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface_, &numSurfaceFormats, surfaceFormatData.data());
+            if (vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface_, &numSurfaceFormats, surfaceFormatData.data()) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to get physical device surface formats.");
+            }
         }
 	}
 
 	void Application::GetSupportedPresentationModes(VkPhysicalDevice const &physicalDevice, std::vector<VkPresentModeKHR> &presentationModeData) {
 	    unsigned numPresentationModes = 0;
-	    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface_, &numPresentationModes, nullptr);
+	    if (vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface_, &numPresentationModes, nullptr) != VK_SUCCESS) {
+	        throw std::runtime_error("Failed to get number of physical device presentation modes.");
+	    }
 
 	    if (numPresentationModes != 0) {
 	        presentationModeData = std::vector<VkPresentModeKHR>(numPresentationModes);
-	        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface_, &numPresentationModes, presentationModeData.data());
+	        if (vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface_, &numPresentationModes, presentationModeData.data()) != VK_SUCCESS) {
+	            throw std::runtime_error("Failed to get physical device presentation modes.");
+	        }
 	    }
 	}
 
@@ -417,11 +443,15 @@ namespace VT {
 	bool Application::CheckValidationLayers(std::vector<const char*>& validationLayerNames) {
 		// Get the number of validation layers
 		unsigned numValidationLayers = 0;
-		vkEnumerateInstanceLayerProperties(&numValidationLayers, nullptr);
+		if (vkEnumerateInstanceLayerProperties(&numValidationLayers, nullptr)) {
+		    throw std::runtime_error("Failed to get number of instance layer properties.");
+		}
 
 		// Get validation layer objects.
 		std::vector<VkLayerProperties> availableValidationLayers(numValidationLayers);
-		vkEnumerateInstanceLayerProperties(&numValidationLayers, availableValidationLayers.data());
+		if (vkEnumerateInstanceLayerProperties(&numValidationLayers, availableValidationLayers.data()) != VK_SUCCESS) {
+		    throw std::runtime_error("Failed to get instance layer properties.");
+		}
 
 		bool complete = true;
 
@@ -560,7 +590,9 @@ namespace VT {
 
         // Basic surface capabilities.
         // Surface is initialized at this point.
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface_, &data.surfaceCapabilities_);
+        if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface_, &data.surfaceCapabilities_) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to get physical device surface capabilities.");
+        }
 
         GetSupportedSurfaceFormats(physicalDevice, data.formats_);
         GetSupportedPresentationModes(physicalDevice, data.presentationModes_);
