@@ -7,6 +7,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vector>
+#include <string>
 
 #include "physical_device_data.h"
 #include "swap_chain_support_data.h"
@@ -36,6 +37,8 @@ namespace VT {
 			void InitializeVulkanSurface();
 			void InitializeSwapChain();
 			void InitializeImageViews();
+			void InitializeGraphicsPipeline();
+			void InitializeShaders();
 
 			void SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo);
 
@@ -56,10 +59,13 @@ namespace VT {
 
 			QueueFamilyIndexData FindQueueFamilies(const VkPhysicalDevice& physicalDevice);
 			SwapChainSupportData QuerySwapChainSupport(const VkPhysicalDevice& physicalDevice);
+            std::vector<char> ReadFile(const std::string& filename); // Reads SPIR-V shader files.
 
 			VkSurfaceFormatKHR ChooseSwapChainSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
 			VkPresentModeKHR ChooseSwapChainPresentationMode(const std::vector<VkPresentModeKHR>& availablePresentationModes);
             VkExtent2D ChooseSwapChainExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities);
+
+            VkShaderModule CreateShaderModule(const std::vector<char>& shaderCode);
 
 			// Data.
 			int width_;

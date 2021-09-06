@@ -5,6 +5,7 @@
 #include <iostream>
 #include <set>
 #include <algorithm>
+#include <fstream>
 
 #include "application.h"
 
@@ -42,6 +43,7 @@ namespace VT {
 		InitializeLogicalDevice();
 		InitializeSwapChain();
 		InitializeImageViews();
+		InitializeGraphicsPipeline();
 	}
 
 	void Application::Update() {
@@ -347,6 +349,45 @@ namespace VT {
         }
 	}
 
+	void Application::InitializeGraphicsPipeline() {
+        InitializeShaders();
+	}
+
+	void Application::InitializeShaders() {
+        std::vector<char> vertexShaderBinary = ReadFile("assets/shaders/bin/triangle_vert.spv");
+        std::vector<char> fragmentShaderBinary = ReadFile("assets/shaders/bin/triangle_frag.spv");
+
+        VkShaderModule vertexShaderModule = CreateShaderModule(vertexShaderBinary);
+        VkShaderModule fragmentShaderModule = CreateShaderModule(fragmentShaderBinary);
+
+        // Create graphics pipeline.
+        // Initialize shader stage.
+        // Vertex shader.
+        VkPipelineShaderStageCreateInfo vertexShaderStageInfo { };
+        vertexShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vertexShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT; // Tell Vulkan what stage of the pipeline this module is used for.
+        vertexShaderStageInfo.module = vertexShaderModule;
+        vertexShaderStageInfo.pName = "main"; // Function to invoke.
+        vertexShaderStageInfo.pSpecializationInfo = nullptr; // Used to specify shader compile time constants, which is more efficient
+                                                             // because the graphics pipeline can eliminate branching based on these constants
+                                                             // at pipeline creation time (rather than render/runtime).
+
+        // Fragment shader.
+        VkPipelineShaderStageCreateInfo fragmentShaderStageInfo { };
+        fragmentShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        fragmentShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragmentShaderStageInfo.module = fragmentShaderModule;
+        fragmentShaderStageInfo.pName = "main";
+        fragmentShaderStageInfo.pSpecializationInfo = nullptr;
+
+        VkPipelineShaderStageCreateInfo shaderStages[] = { vertexShaderStageInfo, fragmentShaderStageInfo };
+
+        // Compilation and linking of shader module bytecode into machine code does not happen until the graphics pipeline
+        // is created and initialized. Shader modules can be destroyed as soon as pipeline creation is finished.
+        vkDestroyShaderModule(logicalDevice_, fragmentShaderModule, nullptr);
+        vkDestroyShaderModule(logicalDevice_, vertexShaderModule, nullptr);
+	}
+
 	// Assumes messenger info has been initialized.
 	void Application::SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo) {
 		messengerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -642,6 +683,24 @@ namespace VT {
         return data;
     }
 
+    std::vector<char> Application::ReadFile(const std::string &filename) {
+	    std::ifstream file(filename.c_str(), std::ios::ate | std::ios::binary);
+
+	    if (!file.is_open()) {
+	        throw std::runtime_error("Failed to open shader file: " + filename);
+	    }
+
+	    std::streamsize fileSize = file.tellg();
+	    std::vector<char> data(fileSize);
+
+	    // Read data.
+	    file.seekg(0);
+	    file.read(data.data(), fileSize);
+
+	    file.close();
+	    return data;
+	}
+
     VkSurfaceFormatKHR Application::ChooseSwapChainSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats) {
 	    // VkSurfaceFormatKHR contains format and colorSpace members.
 	    // Format - color channels and types.
@@ -698,6 +757,20 @@ namespace VT {
         extent.height = std::clamp(extent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 
         return extent;
+    }
+
+    VkShaderModule Application::CreateShaderModule(const std::vector<char> &shaderCode) {
+	    VkShaderModuleCreateInfo createInfo { };
+	    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	    createInfo.codeSize = shaderCode.size();
+	    createInfo.pCode = reinterpret_cast<const uint32_t*>(shaderCode.data());
+
+	    VkShaderModule shaderModule;
+	    if (vkCreateShaderModule(logicalDevice_, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+	        throw std::runtime_error("Failed to create shader module.");
+	    }
+
+	    return shaderModule;
     }
 
 }

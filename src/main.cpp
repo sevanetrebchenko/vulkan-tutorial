@@ -12,6 +12,7 @@ int main() {
 		app.Run();
 	}
 	catch (std::runtime_error& e) {
+	    std::cerr << e.what() << std::endl;
 		return 1;
 	}
     return 0;
