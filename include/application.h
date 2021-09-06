@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "physical_device_data.h"
+#include "swap_chain_support_data.h"
 
 namespace VT {
 
@@ -33,6 +34,7 @@ namespace VT {
 			void InitializePhysicalDevice();
 			void InitializeLogicalDevice();
 			void InitializeVulkanSurface();
+			void InitializeSwapChain();
 
 			void SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo);
 
@@ -42,6 +44,8 @@ namespace VT {
 			void GetSupportedPhysicalDevices(std::vector<VkPhysicalDevice>& deviceData);
 			void GetSupportedQueueFamilies(const VkPhysicalDevice& physicalDevice, std::vector<VkQueueFamilyProperties>& queueData);
 			void GetSupportedPhysicalDeviceExtensions(const VkPhysicalDevice& physicalDevice, std::vector<VkExtensionProperties>& extensions);
+            void GetSupportedSurfaceFormats(const VkPhysicalDevice& physicalDevice, std::vector<VkSurfaceFormatKHR>& surfaceFormatData);
+            void GetSupportedPresentationModes(const VkPhysicalDevice& physicalDevice, std::vector<VkPresentModeKHR>& presentationModeData);
 
 			bool CheckInstanceExtensions(const std::vector<VkExtensionProperties>& supportedExtensions, const std::vector<const char*>& desiredExtensions);
 			bool CheckValidationLayers(std::vector<const char*>& validationLayerData);
@@ -49,7 +53,12 @@ namespace VT {
 			bool CheckPhysicalDevice(const VkPhysicalDevice& physicalDevice);
 			bool CheckPhysicalDeviceExtensionSupport(const VkPhysicalDevice& physicalDevice,  const std::vector<VkExtensionProperties>& supportedDeviceExtensions, const std::vector<const char*>& desiredDeviceExtensions);
 
-			QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& physicalDevice);
+			QueueFamilyIndexData FindQueueFamilies(const VkPhysicalDevice& physicalDevice);
+			SwapChainSupportData QuerySwapChainSupport(const VkPhysicalDevice& physicalDevice);
+
+			VkSurfaceFormatKHR ChooseSwapChainSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+			VkPresentModeKHR ChooseSwapChainPresentationMode(const std::vector<VkPresentModeKHR>& availablePresentationModes);
+            VkExtent2D ChooseSwapChainExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities);
 
 			// Data.
 			int width_;
@@ -70,6 +79,7 @@ namespace VT {
 			VkDevice logicalDevice_;
 			VkQueue graphicsQueue_;
 			VkQueue presentationQueue_;
+			VkSwapchainKHR swapChain_;
 	};
 
 }

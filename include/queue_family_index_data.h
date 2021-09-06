@@ -1,12 +1,12 @@
 
-#ifndef VULKAN_TUTORIAL_QUEUE_FAMILY_INDICES_H
-#define VULKAN_TUTORIAL_QUEUE_FAMILY_INDICES_H
+#ifndef VULKAN_TUTORIAL_QUEUE_FAMILY_INDEX_DATA_H
+#define VULKAN_TUTORIAL_QUEUE_FAMILY_INDEX_DATA_H
 
 #include <optional>
 
 namespace VT {
 
-	struct QueueFamilyIndices {
+	struct QueueFamilyIndexData {
 		[[nodiscard]] bool IsComplete() const;
 
 		std::optional<unsigned> graphicsFamily_;
@@ -17,4 +17,4 @@ namespace VT {
 
 }
 
-#endif //VULKAN_TUTORIAL_QUEUE_FAMILY_INDICES_H
+#endif //VULKAN_TUTORIAL_QUEUE_FAMILY_INDEX_DATA_H

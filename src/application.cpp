@@ -4,13 +4,15 @@
 #include <cstring>
 #include <iostream>
 #include <set>
+#include <algorithm>
 
 #include "application.h"
 
 namespace VT {
 
 	Application::Application(int width, int height) : width_(width),
-													  height_(height)
+													  height_(height),
+													  enableValidationLayers_(true)
 													  {
 	}
 
@@ -38,6 +40,7 @@ namespace VT {
 		InitializeVulkanSurface();
 		InitializePhysicalDevice();
 		InitializeLogicalDevice();
+		InitializeSwapChain();
 	}
 
 	void Application::Update() {
@@ -47,17 +50,18 @@ namespace VT {
 	}
 
 	void Application::Shutdown() {
-		if (enableValidationLayers_) {
-			auto function = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance_, "vkDestroyDebugUtilsMessengerEXT");
-			if (!function) {
-				throw std::runtime_error("Failed to find function for destroying debug messenger.");
-			}
-
-			function(instance_, messenger_, nullptr);
-		}
-
 		// Functions take optional callbacks.
+		vkDestroySwapchainKHR(logicalDevice_, swapChain_, nullptr); // Needs to be destroyed before the logical device.
 		vkDestroyDevice(logicalDevice_, nullptr);
+
+		if (enableValidationLayers_) {
+		    auto function = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance_, "vkDestroyDebugUtilsMessengerEXT");
+		    if (!function) {
+		        throw std::runtime_error("Failed to find function for destroying debug messenger.");
+		    }
+
+		    function(instance_, messenger_, nullptr);
+		}
 
 		vkDestroySurfaceKHR(instance_, surface_, nullptr); // Surface needs to be destroyed before instance.
 		vkDestroyInstance(instance_, nullptr);
@@ -95,6 +99,10 @@ namespace VT {
 		// Get supported extensions.
 		std::vector<VkExtensionProperties> supportedExtensions;
 		GetSupportedExtensions(supportedExtensions);
+
+		if (supportedExtensions.empty()) {
+		    throw std::runtime_error("No supported Vulkan extensions.");
+		}
 
 		// Get desired extensions.
 		std::vector<const char*> desiredExtensions;
@@ -169,11 +177,12 @@ namespace VT {
 	void Application::InitializeLogicalDevice() {
 		// Queues are something you submit command buffers to.
 		// Create structure to hold data for all the desired queue families.
+		QueueFamilyIndexData& indexData = physicalDeviceData_.queueIndices_;
 		std::set<unsigned> uniqueQueueFamilies = {
-			physicalDeviceData_.queueIndices_.graphicsFamily_.value(),
-		    physicalDeviceData_.queueIndices_.presentationFamily_.value()
+            indexData.graphicsFamily_.value(),
+            indexData.presentationFamily_.value()
 		};
-		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos(uniqueQueueFamilies.size());
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 
 		float queuePriority = 1.0f;
 		for (unsigned queueFamily : uniqueQueueFamilies) {
@@ -229,6 +238,61 @@ namespace VT {
 		}
 	}
 
+	void Application::InitializeSwapChain() {
+        SwapChainSupportData swapChainSupportData = QuerySwapChainSupport(physicalDeviceData_.physicalDevice_);
+
+        VkSurfaceFormatKHR surfaceFormat = ChooseSwapChainSurfaceFormat(swapChainSupportData.formats_);
+        VkPresentModeKHR presentationMode = ChooseSwapChainPresentationMode(swapChainSupportData.presentationModes_);
+        VkExtent2D extent = ChooseSwapChainExtent(swapChainSupportData.surfaceCapabilities_);
+
+        // Request 1 more than minimum to prevent waiting for driver to complete operations before acquiring an image to render to.
+        unsigned swapChainImageCount = swapChainSupportData.surfaceCapabilities_.minImageCount + 1;
+        swapChainImageCount = std::clamp(swapChainImageCount, swapChainImageCount, swapChainSupportData.surfaceCapabilities_.maxImageCount); // maxImageCount = 0 means no maximum number of images.
+
+        // Create swapchain.
+        VkSwapchainCreateInfoKHR createInfo { };
+        createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+        createInfo.surface = surface_;
+
+        createInfo.minImageCount = swapChainImageCount;
+        createInfo.imageFormat = surfaceFormat.format;
+        createInfo.imageColorSpace = surfaceFormat.colorSpace;
+        createInfo.imageExtent = extent;
+        createInfo.imageArrayLayers = 1; // Specifies number of layers each image consists of.
+        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // Color render attachment.
+
+        QueueFamilyIndexData& indexData = physicalDeviceData_.queueIndices_; // Guaranteed to exist due to requirements from physical device construction.
+        unsigned graphicsFamilyQueueIndex = indexData.graphicsFamily_.value();
+        unsigned presentationFamilyQueueIndex = indexData.presentationFamily_.value();
+
+        unsigned queueFamilyIndexData[] = { graphicsFamilyQueueIndex, presentationFamilyQueueIndex };
+        if (graphicsFamilyQueueIndex != presentationFamilyQueueIndex) {
+            // Separate queues used for graphics and presentation.
+            // Drawing images on the graphics queue, submitting images on the presentation queue.
+            createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT; // Images can be used across multiple queues without explicit ownership transfer.
+            // TODO: Look into ownership transferring, as this option offers better performance.
+
+            createInfo.queueFamilyIndexCount = 2; // Number of queue families that have access to swapchain images with VK_SHARING_MODE_CONCURRENT.
+            createInfo.pQueueFamilyIndices = queueFamilyIndexData; // Which queue families have access.
+        }
+        else {
+            // Same queue used for garphics and presentation.
+            createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; // Images are owned by one family queue at a time an ownership must be transferred.
+            createInfo.queueFamilyIndexCount = 0;
+            createInfo.pQueueFamilyIndices = nullptr;
+        }
+
+        createInfo.preTransform = swapChainSupportData.surfaceCapabilities_.currentTransform; // Transformation pre-applied to all swapchain images.
+        createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // Blending with other images.
+        createInfo.presentMode = presentationMode;
+        createInfo.clipped = VK_TRUE; // Color of obscured pixels does not matter.
+        createInfo.oldSwapchain = nullptr; // Swapping between different swapchains requires the old one to be stored.
+
+        if (vkCreateSwapchainKHR(logicalDevice_, &createInfo, nullptr, &swapChain_) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create swap chain!");
+        }
+	}
+
 	// Assumes messenger info has been initialized.
 	void Application::SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo) {
 		messengerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -242,8 +306,10 @@ namespace VT {
 		unsigned extensionCount = 0;
 		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr); // Get the number of extensions.
 
-		extensionData.resize(extensionCount);
-		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionData.data()); // Get extension data.
+		if (extensionCount != 0) {
+		    extensionData.resize(extensionCount);
+		    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionData.data()); // Get extension data.
+		}
 	}
 
 	void Application::GetDesiredInstanceExtensions(std::vector<const char*>& extensions) {
@@ -259,6 +325,9 @@ namespace VT {
 	}
 
 	void Application::GetDesiredPhysicalDeviceExtensions(std::vector<const char*>& deviceExtensions) {
+	    // Push back desire for swap chain.
+	    // Swap chain is a queue of images that are waiting to be presented on the screen.
+	    // Application grabs an image, renders it, then returns it to the queue.
 		deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 	}
 
@@ -278,16 +347,40 @@ namespace VT {
 		unsigned numQueueFamilies = 0;
 		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numQueueFamilies, nullptr);
 
-		queueData = std::vector<VkQueueFamilyProperties>(numQueueFamilies);
-		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numQueueFamilies, queueData.data());
+		if (numQueueFamilies != 0) {
+		    queueData = std::vector<VkQueueFamilyProperties>(numQueueFamilies);
+		    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numQueueFamilies, queueData.data());
+		}
 	}
 
 	void Application::GetSupportedPhysicalDeviceExtensions(const VkPhysicalDevice& physicalDevice, std::vector<VkExtensionProperties>& extensions) {
 		unsigned numExtensions = 0;
 		vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &numExtensions, nullptr);
 
-		extensions = std::vector<VkExtensionProperties>(numExtensions);
-		vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &numExtensions, extensions.data());
+		if (numExtensions != 0) {
+		    extensions = std::vector<VkExtensionProperties>(numExtensions);
+		    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &numExtensions, extensions.data());
+		}
+	}
+
+	void Application::GetSupportedSurfaceFormats(const VkPhysicalDevice &physicalDevice, std::vector<VkSurfaceFormatKHR> &surfaceFormatData) {
+        unsigned numSurfaceFormats = 0;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface_, &numSurfaceFormats, nullptr);
+
+        if (numSurfaceFormats != 0) {
+            surfaceFormatData = std::vector<VkSurfaceFormatKHR>(numSurfaceFormats);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface_, &numSurfaceFormats, surfaceFormatData.data());
+        }
+	}
+
+	void Application::GetSupportedPresentationModes(VkPhysicalDevice const &physicalDevice, std::vector<VkPresentModeKHR> &presentationModeData) {
+	    unsigned numPresentationModes = 0;
+	    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface_, &numPresentationModes, nullptr);
+
+	    if (numPresentationModes != 0) {
+	        presentationModeData = std::vector<VkPresentModeKHR>(numPresentationModes);
+	        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface_, &numPresentationModes, presentationModeData.data());
+	    }
 	}
 
 	bool Application::CheckInstanceExtensions(const std::vector<VkExtensionProperties>& supportedExtensions, const std::vector<const char*>& desiredExtensions) {
@@ -368,9 +461,9 @@ namespace VT {
 
 		std::cout << "Found physical device: " << deviceProperties.deviceName << std::endl;
 
-		QueueFamilyIndices queueFamilyIndices = FindQueueFamilies(physicalDevice);
+		QueueFamilyIndexData queueFamilyIndices = FindQueueFamilies(physicalDevice);
 
-		// Device extensions.
+		// Check for physical device extensions.
 		std::vector<const char*> desiredDeviceExtensions;
 		GetDesiredPhysicalDeviceExtensions(desiredDeviceExtensions);
 
@@ -379,7 +472,14 @@ namespace VT {
 
 		bool extensionsSupported = CheckPhysicalDeviceExtensionSupport(physicalDevice, supportedDeviceExtensions, desiredDeviceExtensions);
 
-		if (queueFamilyIndices.IsComplete() && extensionsSupported) {
+		// Check for (adequate) support of the swap chain on the physical device.
+		bool swapChainSupported = false;
+		if (extensionsSupported) {
+		    SwapChainSupportData swapChainSupportData = QuerySwapChainSupport(physicalDevice);
+		    swapChainSupported = !swapChainSupportData.formats_.empty() && !swapChainSupportData.presentationModes_.empty();
+		}
+
+		if (queueFamilyIndices.IsComplete() && extensionsSupported && swapChainSupported) {
 			// Found compatible device.
 			physicalDeviceData_.physicalDevice_ = physicalDevice;
 			physicalDeviceData_.deviceProperties = deviceProperties;
@@ -419,8 +519,8 @@ namespace VT {
 	// Every operation in Vulkan requires commands to be submitted to a queue.
 	// There are different families of queues, each used for a specific purpose.
 	// This function checks for the existence of the required queue families and the location of the queue that supports graphical operations - the graphics queue.
-	QueueFamilyIndices Application::FindQueueFamilies(const VkPhysicalDevice& physicalDevice) {
-		QueueFamilyIndices queueFamilyIndices;
+	QueueFamilyIndexData Application::FindQueueFamilies(const VkPhysicalDevice& physicalDevice) {
+		QueueFamilyIndexData queueFamilyIndices;
 
 		// VkQueueFamilyProperties contains details about the queue family, including supported operations and maximum number of queues that can be created.
 		std::vector<VkQueueFamilyProperties> queueData;
@@ -446,5 +546,76 @@ namespace VT {
 
 		return queueFamilyIndices;
 	}
+
+    SwapChainSupportData Application::QuerySwapChainSupport(const VkPhysicalDevice& physicalDevice) {
+        SwapChainSupportData data;
+
+        // Basic surface capabilities.
+        // Surface is initialized at this point.
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface_, &data.surfaceCapabilities_);
+
+        GetSupportedSurfaceFormats(physicalDevice, data.formats_);
+        GetSupportedPresentationModes(physicalDevice, data.presentationModes_);
+
+        return data;
+    }
+
+    VkSurfaceFormatKHR Application::ChooseSwapChainSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats) {
+	    // VkSurfaceFormatKHR contains format and colorSpace members.
+	    // Format - color channels and types.
+	    // colorSpace - indicates color space
+
+	    for (const VkSurfaceFormatKHR& surfaceFormat : availableFormats) {
+	        if (surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB && surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+	            // Found desired SRGB color format + color space.
+	            return surfaceFormat;
+	        }
+	    }
+
+	    // Also possible to rank other available formats based on specification.
+	    return availableFormats[0];
+    }
+
+    VkPresentModeKHR Application::ChooseSwapChainPresentationMode(const std::vector<VkPresentModeKHR> &availablePresentationModes) {
+	    // VK_PRESENT_MODE_IMMEDIATE_KHR - Images submitted are transferred to the screen immediately. Can result in tearing.
+	    // VK_PRESENT_MODE_FIFO_KHR - Swap chain is a queue (FIFO) that takes the next image from the front. Images are submitted to the back
+	    //                            of the queue. If the queue is full, program has to wait (vsync).
+	    // VK_PRESENT_MODE_FIFO_RELAXED_KHR - Same as above. If the queue is empty at the beginning of the refresh, submitted image gets
+	    //                                    rendered immediately. Can result in tearing.
+        // VK_PRESENT_MODE_MAILBOX_KHR - Same as #2, except when the queue is full, older images are replaced with newer ones (triple buffering).
+
+        for (const VkPresentModeKHR& presentationMode : availablePresentationModes) {
+            if (presentationMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+                // Attempt to find triple buffering mode.
+                return presentationMode;
+            }
+        }
+
+        return VK_PRESENT_MODE_FIFO_KHR; // Guaranteed to exist.
+    }
+
+    VkExtent2D Application::ChooseSwapChainExtent(const VkSurfaceCapabilitiesKHR &surfaceCapabilities) {
+	    // Special case: width and height of surfaceCapabilities is (unsigned)-1, which means application window size is not
+	    // determined by swap chain size. Should not be modified.
+	    if (surfaceCapabilities.currentExtent.width != UINT32_MAX && surfaceCapabilities.currentExtent.height != UINT32_MAX) {
+            return surfaceCapabilities.currentExtent;
+	    }
+
+	    // Can configure the extent to the size we want (taking into account min/max constraints).
+	    int width = -1;
+	    int height = -1;
+
+        glfwGetFramebufferSize(window_, &width, &height); // Framebuffer size gets window dimensions in pixels.
+                                                          // GLFW uses screen coordinates that do not necessarily translate 1-1.
+        VkExtent2D extent = {
+            static_cast<uint32_t>(width),
+            static_cast<uint32_t>(height)
+        };
+
+        extent.width = std::clamp(extent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+        extent.height = std::clamp(extent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+
+        return extent;
+    }
 
 }

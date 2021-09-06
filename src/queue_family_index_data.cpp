@@ -1,9 +1,9 @@
 
-#include "queue_family_indices.h"
+#include "queue_family_index_data.h"
 
 namespace VT {
 
-	bool QueueFamilyIndices::IsComplete() const {
+	bool QueueFamilyIndexData::IsComplete() const {
 		return graphicsFamily_.has_value() && presentationFamily_.has_value();
 	}
 
