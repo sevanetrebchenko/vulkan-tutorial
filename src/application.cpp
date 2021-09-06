@@ -98,7 +98,7 @@ namespace VT {
 
 		// Get desired extensions.
 		std::vector<const char*> desiredExtensions;
-		GetDesiredExtensions(desiredExtensions);
+		GetDesiredInstanceExtensions(desiredExtensions);
 
 		if (!CheckInstanceExtensions(supportedExtensions, desiredExtensions)) {
 			throw std::runtime_error("Requested extensions not supported.");
@@ -193,7 +193,10 @@ namespace VT {
 		createInfo.pQueueCreateInfos = queueCreateInfos.data();
 
 		createInfo.pEnabledFeatures = &physicalDeviceData_.deviceFeatures;
-		createInfo.enabledExtensionCount = 0;
+
+		// Enable swapchain.
+		createInfo.ppEnabledExtensionNames = physicalDeviceData_.deviceExtensions_.data();
+		createInfo.enabledExtensionCount = physicalDeviceData_.deviceExtensions_.size();
 
 		if (enableValidationLayers_) {
 			// No distinction between device and instance validation layer specification on up to date Vulkan applications.
@@ -243,7 +246,7 @@ namespace VT {
 		vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionData.data()); // Get extension data.
 	}
 
-	void Application::GetDesiredExtensions(std::vector<const char*>& extensions) {
+	void Application::GetDesiredInstanceExtensions(std::vector<const char*>& extensions) {
 		unsigned glfwExtensionCount = 0;
 		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
@@ -253,6 +256,10 @@ namespace VT {
 			// Emplace debug logger extension.
 			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 		}
+	}
+
+	void Application::GetDesiredPhysicalDeviceExtensions(std::vector<const char*>& deviceExtensions) {
+		deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 	}
 
 	void Application::GetSupportedPhysicalDevices(std::vector<VkPhysicalDevice>& deviceData) {
@@ -275,8 +282,18 @@ namespace VT {
 		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numQueueFamilies, queueData.data());
 	}
 
+	void Application::GetSupportedPhysicalDeviceExtensions(const VkPhysicalDevice& physicalDevice, std::vector<VkExtensionProperties>& extensions) {
+		unsigned numExtensions = 0;
+		vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &numExtensions, nullptr);
+
+		extensions = std::vector<VkExtensionProperties>(numExtensions);
+		vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &numExtensions, extensions.data());
+	}
+
 	bool Application::CheckInstanceExtensions(const std::vector<VkExtensionProperties>& supportedExtensions, const std::vector<const char*>& desiredExtensions) {
 		// Verify extensions exist with supported extensions.
+		bool complete = true;
+
 		for (const char* desiredExtension : desiredExtensions) {
 			bool found = false;
 
@@ -288,11 +305,12 @@ namespace VT {
 			}
 
 			if (!found) {
-				return false;
+				complete = false;
+				std::cout << "Encountered unsupported instance extension: " << desiredExtension << std::endl;
 			}
 		}
 
-		return true;
+		return complete;
 	}
 
 	bool Application::CheckValidationLayers(std::vector<const char*>& validationLayerNames) {
@@ -303,6 +321,8 @@ namespace VT {
 		// Get validation layer objects.
 		std::vector<VkLayerProperties> availableValidationLayers(numValidationLayers);
 		vkEnumerateInstanceLayerProperties(&numValidationLayers, availableValidationLayers.data());
+
+		bool complete = true;
 
 		// Compare supported validation layers with desired.
 		for (const char* desired : validationLayerNames) {
@@ -315,13 +335,14 @@ namespace VT {
 				}
 			}
 
-			// Not all desired layers are supported.
 			if (!found) {
-				return false;
+				// Not all desired layers are supported.
+				complete = false;
+				std::cout << "Encountered unsupported validation layer: " << desired << std::endl;
 			}
 		}
 
-		return true;
+		return complete;
 	}
 
 	bool Application::CheckPhysicalDevices(const std::vector<VkPhysicalDevice>& physicalDevices) {
@@ -349,17 +370,50 @@ namespace VT {
 
 		QueueFamilyIndices queueFamilyIndices = FindQueueFamilies(physicalDevice);
 
-		if (queueFamilyIndices.IsComplete()) {
+		// Device extensions.
+		std::vector<const char*> desiredDeviceExtensions;
+		GetDesiredPhysicalDeviceExtensions(desiredDeviceExtensions);
+
+		std::vector<VkExtensionProperties> supportedDeviceExtensions;
+		GetSupportedPhysicalDeviceExtensions(physicalDevice, supportedDeviceExtensions);
+
+		bool extensionsSupported = CheckPhysicalDeviceExtensionSupport(physicalDevice, supportedDeviceExtensions, desiredDeviceExtensions);
+
+		if (queueFamilyIndices.IsComplete() && extensionsSupported) {
 			// Found compatible device.
 			physicalDeviceData_.physicalDevice_ = physicalDevice;
 			physicalDeviceData_.deviceProperties = deviceProperties;
 			physicalDeviceData_.deviceFeatures = deviceFeatures;
 			physicalDeviceData_.queueIndices_ = queueFamilyIndices;
+			physicalDeviceData_.deviceExtensions_ = desiredDeviceExtensions;
 
 			return true;
 		}
 
 		return false;
+	}
+
+	bool Application::CheckPhysicalDeviceExtensionSupport(const VkPhysicalDevice& physicalDevice, const std::vector<VkExtensionProperties>& supportedDeviceExtensions, const std::vector<const char*>& desiredDeviceExtensions) {
+		// Make sure all desired extensions are present in the device extensions.
+		bool complete = true;
+
+		for (const char* desiredExtension : desiredDeviceExtensions) {
+			bool found = false;
+
+			for (const VkExtensionProperties& deviceExtension : supportedDeviceExtensions) {
+				if (strcmp(deviceExtension.extensionName, desiredExtension) == 0) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) {
+				complete = false;
+				std::cout << "Encountered unsupported physical device extension: " << desiredExtension << std::endl;
+			}
+		}
+
+		return complete;
 	}
 
 	// Every operation in Vulkan requires commands to be submitted to a queue.

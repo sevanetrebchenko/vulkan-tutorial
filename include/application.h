@@ -37,14 +37,17 @@ namespace VT {
 			void SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo);
 
 			void GetSupportedExtensions(std::vector<VkExtensionProperties>& extensionData);
-			void GetDesiredExtensions(std::vector<const char*>& extensions);
+			void GetDesiredInstanceExtensions(std::vector<const char*>& extensions);
+			void GetDesiredPhysicalDeviceExtensions(std::vector<const char*>& deviceExtensions);
 			void GetSupportedPhysicalDevices(std::vector<VkPhysicalDevice>& deviceData);
 			void GetSupportedQueueFamilies(const VkPhysicalDevice& physicalDevice, std::vector<VkQueueFamilyProperties>& queueData);
+			void GetSupportedPhysicalDeviceExtensions(const VkPhysicalDevice& physicalDevice, std::vector<VkExtensionProperties>& extensions);
 
 			bool CheckInstanceExtensions(const std::vector<VkExtensionProperties>& supportedExtensions, const std::vector<const char*>& desiredExtensions);
 			bool CheckValidationLayers(std::vector<const char*>& validationLayerData);
 			bool CheckPhysicalDevices(const std::vector<VkPhysicalDevice>& physicalDevices);
 			bool CheckPhysicalDevice(const VkPhysicalDevice& physicalDevice);
+			bool CheckPhysicalDeviceExtensionSupport(const VkPhysicalDevice& physicalDevice,  const std::vector<VkExtensionProperties>& supportedDeviceExtensions, const std::vector<const char*>& desiredDeviceExtensions);
 
 			QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& physicalDevice);
 

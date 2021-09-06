@@ -12,6 +12,7 @@ namespace VT {
 		VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
 		VkPhysicalDeviceProperties deviceProperties; // Used for basic device properties, like name, type, and supported Vulkan versions.
 		VkPhysicalDeviceFeatures deviceFeatures; // Used for optional features like texture compression, 64-bit floats, and multi vieport rendering.
+		std::vector<const char*> deviceExtensions_;
 		QueueFamilyIndices queueIndices_;
 	};
 
