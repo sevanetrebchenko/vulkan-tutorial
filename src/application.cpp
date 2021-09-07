@@ -44,6 +44,7 @@ namespace VT {
 		InitializeSwapChain();
 		InitializeImageViews();
 		InitializeGraphicsPipeline();
+		InitializeFramebuffers();
 	}
 
 	void Application::Update() {
@@ -53,6 +54,10 @@ namespace VT {
 	}
 
 	void Application::Shutdown() {
+	    for (const VkFramebuffer& framebuffer : swapChainFrameBuffers_) {
+	        vkDestroyFramebuffer(logicalDevice_, framebuffer, nullptr);
+	    }
+
 		vkDestroyPipeline(logicalDevice_, graphicsPipeline_, nullptr);
 		vkDestroyPipelineLayout(logicalDevice_, pipelineLayout_, nullptr);
 		vkDestroyRenderPass(logicalDevice_, renderPass_, nullptr);
@@ -606,6 +611,33 @@ namespace VT {
 	    // is created and initialized. Shader modules can be destroyed as soon as pipeline creation is finished.
 	    vkDestroyShaderModule(logicalDevice_, fragmentShaderModule, nullptr);
 	    vkDestroyShaderModule(logicalDevice_, vertexShaderModule, nullptr);
+	}
+
+	void Application::InitializeFramebuffers() {
+	    // Image that we use for the framebuffer attachment depends on what the swapchain gives back when we retrieve and image for presentation.
+	    // Framebuffer needs to hold all the images in the swap chain, and only use the one for the color attachments to render to.
+        swapChainFrameBuffers_.resize(swapChainImageViews_.size());
+
+        for (size_t i = 0; i < swapChainImageViews_.size(); i++) {
+            VkImageView attachments[] = {
+                swapChainImageViews_[i]
+            };
+
+            // The specific image views that will be used for the attachments, and their dimensions, are specified in VkFramebuffer objects.
+            // Framebuffers bind ImageViews to attachments.
+            VkFramebufferCreateInfo framebufferInfo{};
+            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            framebufferInfo.renderPass = renderPass_;
+            framebufferInfo.attachmentCount = 1; // One attachment per framebuffer.
+            framebufferInfo.pAttachments = attachments;
+            framebufferInfo.width = swapChainExtent_.width;
+            framebufferInfo.height = swapChainExtent_.height;
+            framebufferInfo.layers = 1;
+
+            if (vkCreateFramebuffer(logicalDevice_, &framebufferInfo, nullptr, &swapChainFrameBuffers_[i]) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create framebuffer.");
+            }
+        }
 	}
 
 	// Assumes messenger info has been initialized.
