@@ -16,7 +16,7 @@ function Compile() {
     local bin="${commandLineArguments[1]}"/"$2"
 
     # shellcheck disable=SC2086
-    C:/VulkanSDK/1.2.182.0/Bin/glslc.exe "${src}" -o "${bin}"
+    bin/glslc.exe "${src}" -o "${bin}"
 
     local message="Compiled ${src} into ${bin}"
     echo "${message}"
@@ -33,7 +33,7 @@ if [ -z "$1" ] || [ -z "$2" ]; then
 fi
 
 # Clear/create shader binary directory.
-[ -d "$2" ] && ( echo "Clearing shader binary directory." && rm "$2"/* ) || ( echo "Clearing shader binary directory." && mkdir "$2" )
+[ -d "$2" ] && ( echo "Clearing shader binary directory." && rm "$2"/* ) || ( echo "Making shader binary directory." && mkdir -p "$2" )
 
 # Compile GLSL shader code into SPIR-V binary.
 Compile triangle.vert triangle_vert.spv
