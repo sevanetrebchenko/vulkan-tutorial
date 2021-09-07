@@ -92,6 +92,8 @@ namespace VT {
 			VkExtent2D swapChainExtent_;
             std::vector<VkImage> swapChainImages_; // Created and cleaned up with swapchain creation/destruction.
 	        std::vector<VkImageView> swapChainImageViews_;
+
+	        VkPipelineLayout pipelineLayout_; // Shader uniform values need to be specified within an object at pipeline creation time.
 	};
 
 }
