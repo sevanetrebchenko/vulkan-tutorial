@@ -15,7 +15,8 @@ namespace VT {
 													  height_(height),
 													  enableValidationLayers_(true),
 													  concurrentFrames_(2),
-													  currentFrameIndex_(0)
+													  currentFrameIndex_(0),
+													  framebufferResized_(false)
 													  {
 	}
 
@@ -34,6 +35,13 @@ namespace VT {
 		}
 
 		return VK_FALSE; // Returns true if the function call that triggered the layer should be aborted. Normally used to test the layers themselves.
+	}
+
+	void Application::FramebufferResizeCallback(GLFWwindow *window, int width, int height) {
+	    Application* application = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+	    application->framebufferResized_ = true;
+	    application->width_ = width;
+	    application->height_ = height;
 	}
 
 	void Application::Initialize() {
@@ -62,6 +70,8 @@ namespace VT {
 	}
 
 	void Application::Shutdown() {
+	    DestroySwapChain();
+
 	    for (int i = 0; i < concurrentFrames_; ++i) {
 	        vkDestroySemaphore(logicalDevice_, renderFinishedSemaphores_[i], nullptr);
 	        vkDestroySemaphore(logicalDevice_, imageAvailableSemaphores_[i], nullptr);
@@ -69,20 +79,6 @@ namespace VT {
 	    }
 
 	    vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
-
-	    for (const VkFramebuffer& framebuffer : swapChainFramebuffers_) {
-	        vkDestroyFramebuffer(logicalDevice_, framebuffer, nullptr);
-	    }
-
-		vkDestroyPipeline(logicalDevice_, graphicsPipeline_, nullptr);
-		vkDestroyPipelineLayout(logicalDevice_, pipelineLayout_, nullptr);
-		vkDestroyRenderPass(logicalDevice_, renderPass_, nullptr);
-
-		for (const VkImageView& imageView : swapChainImageViews_) {
-		    vkDestroyImageView(logicalDevice_, imageView, nullptr);
-		}
-
-		vkDestroySwapchainKHR(logicalDevice_, swapChain_, nullptr); // Needs to be destroyed before the logical device.
 		vkDestroyDevice(logicalDevice_, nullptr);
 
 		if (enableValidationLayers_) {
@@ -106,9 +102,12 @@ namespace VT {
 		glfwInit();
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
 		window_ = glfwCreateWindow(width_, height_, "Vulkan Tutorial", nullptr, nullptr);
+
+		glfwSetWindowUserPointer(window_, this); // Allow access for member variables.
+        glfwSetFramebufferSizeCallback(window_, FramebufferResizeCallback);
 	}
 
 	void Application::InitializeVKInstance() {
@@ -694,7 +693,7 @@ namespace VT {
         // One of the rendering commands requires the binding of the correct VkFramebuffer - need to record a command buffer for each image in the swapchain.
         // Command buffers are freed implicitly when the command pool is destroyed.
         unsigned numCommandBuffers = swapChainFramebuffers_.size();
-        commandBuffers_.reserve(numCommandBuffers);
+        commandBuffers_.resize(numCommandBuffers);
 
         VkCommandBufferAllocateInfo commandBufferAllocationInfo { };
         commandBufferAllocationInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -764,7 +763,7 @@ namespace VT {
         imageAvailableSemaphores_.resize(concurrentFrames_);
         renderFinishedSemaphores_.resize(concurrentFrames_);
         inFlightFences_.resize(concurrentFrames_);
-        imagesInFlight_.resize(concurrentFrames_, VK_NULL_HANDLE); // No initialization necessary.
+        imagesInFlight_.resize(swapChainImages_.size(), VK_NULL_HANDLE); // No initialization necessary.
 
 	    VkSemaphoreCreateInfo semaphoreInfo { };
 	    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -787,12 +786,23 @@ namespace VT {
 
 	    // 1. Acquire an image from the swap chain.
 	    unsigned imageIndex;
-	    vkAcquireNextImageKHR(logicalDevice_,
-                              swapChain_,
-                              UINT64_MAX, // Using max uint64 disables timeout.
-                              imageAvailableSemaphores_[currentFrameIndex_], // When this semaphore is signaled, we can start drawing the image.
-                              VK_NULL_HANDLE,
-                              &imageIndex);
+	    VkResult imageResult = vkAcquireNextImageKHR(logicalDevice_,
+                                                     swapChain_,
+                                                     UINT64_MAX, // Using max uint64 disables timeout.
+                                                     imageAvailableSemaphores_[currentFrameIndex_], // When this semaphore is signaled, we can start drawing the image.
+                                                     VK_NULL_HANDLE,
+                                                     &imageIndex);
+
+	    // vkAcquireNextImageKHR tells the program that the current swapchain is no longer valid.
+	    // VK_ERROR_OUT_OF_DATE_KHR - The swap chain has become incompatible with the surface and can no longer be used for rendering. Usually happens after a window resize.
+	    // VK_SUBOPTIMAL_KHR - The swap chain can still be used to successfully present to the surface, but the surface properties are no longer matched exactly.
+	    if (imageResult == VK_ERROR_OUT_OF_DATE_KHR) {
+	        CreateSwapChain(); // Recreate swap chain.
+	        return;
+	    }
+	    else if (imageResult != VK_SUCCESS && imageResult != VK_SUBOPTIMAL_KHR) {
+	        throw std::runtime_error("Failed to acquire swapchain image.");
+	    }
 
 	    // There may be more concurrent frames than swapchain images, or AcquireNextImage may return indices out of order.
 	    // Ensure retrieved index is not on an image that is currently in flight.
@@ -801,7 +811,7 @@ namespace VT {
 	        vkWaitForFences(logicalDevice_, 1, &imagesInFlight_[imageIndex], VK_TRUE, UINT64_MAX);
 	    }
 	    // Mark the image as in use.
-	    imagesInFlight_[imageIndex] = inFlightFences_[imageIndex];
+	    imagesInFlight_[imageIndex] = inFlightFences_[currentFrameIndex_];
 
 	    // 2. Execute the command buffer with that image as attachment in the framebuffer.
 	    VkSubmitInfo submitInfo { };
@@ -847,11 +857,60 @@ namespace VT {
 	    presentInfo.pResults = nullptr; // Specify an array of VkResult values to check each individual swapchain for presentation success.
 
 	    // Since there is only one swapchain, return value from vkQueuePresentKHR checks presentation success.
-	    if (vkQueuePresentKHR(presentationQueue_, &presentInfo) != VK_SUCCESS) {
-	        // Presentation error does not necessarily mean program termination.
+	    VkResult presentationResult = vkQueuePresentKHR(presentationQueue_, &presentInfo);
+
+	    // Check for valid swapchain.
+	    if (presentationResult == VK_ERROR_OUT_OF_DATE_KHR || presentationResult == VK_SUBOPTIMAL_KHR || framebufferResized_) {
+	        CreateSwapChain(); // Recreate swap chain.
+	        framebufferResized_ = false; // Ensures semaphores are in a consistent state.
+	    }
+	    else if (presentationResult != VK_SUCCESS) {
+	        throw std::runtime_error("Failed to present swap chain image.");
 	    }
 
 	    currentFrameIndex_ = (currentFrameIndex_ + 1) & concurrentFrames_;
+	}
+
+	void Application::CreateSwapChain() {
+	    int width = 0;
+	    int height = 0;
+	    glfwGetFramebufferSize(window_, &width, &height);
+
+	    // Window got minimized, pause execution.
+	    while (width == 0 || height == 0) {
+	        glfwGetFramebufferSize(window_, &width, &height);
+	        glfwWaitEvents();
+	    }
+
+	    vkDeviceWaitIdle(logicalDevice_); // Wait for resources to become available.
+
+	    DestroySwapChain(); // Destroy old swapchain.
+
+	    InitializeSwapChain();
+	    InitializeImageViews(); // ImageViews depend on swapchain.
+	    InitializeGraphicsPipeline(); // Depends on ImageView formatting + viewport and scissor size.
+	    InitializeFramebuffers();
+	    InitializeCommandBuffers();
+
+	    imagesInFlight_.resize(swapChainImages_.size(), VK_NULL_HANDLE);
+	}
+
+	void Application::DestroySwapChain() {
+	    for (const VkFramebuffer& framebuffer : swapChainFramebuffers_) {
+	        vkDestroyFramebuffer(logicalDevice_, framebuffer, nullptr);
+	    }
+
+	    vkFreeCommandBuffers(logicalDevice_, commandPool_, static_cast<unsigned>(commandBuffers_.size()), commandBuffers_.data()); // Potential for reusing the command pool.
+
+	    vkDestroyPipeline(logicalDevice_, graphicsPipeline_, nullptr);
+	    vkDestroyPipelineLayout(logicalDevice_, pipelineLayout_, nullptr);
+	    vkDestroyRenderPass(logicalDevice_, renderPass_, nullptr);
+
+	    for (const VkImageView& imageView : swapChainImageViews_) {
+	        vkDestroyImageView(logicalDevice_, imageView, nullptr);
+	    }
+
+	    vkDestroySwapchainKHR(logicalDevice_, swapChain_, nullptr); // Needs to be destroyed before the logical device.
 	}
 
 	// Assumes messenger info has been initialized.

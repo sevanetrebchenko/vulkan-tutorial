@@ -24,6 +24,7 @@ namespace VT {
 		private:
 			// Functions.
 			static VKAPI_ATTR VkBool32 VKAPI_CALL DebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void* userData);
+            static void FramebufferResizeCallback(GLFWwindow* window, int width, int height);
 
 			void Initialize();
 			void Update();
@@ -44,6 +45,9 @@ namespace VT {
 			void InitializeSynchronizationObjects();
 
 			void RenderFrame();
+
+			void CreateSwapChain();
+			void DestroySwapChain();
 
 			void SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo);
 
@@ -77,6 +81,7 @@ namespace VT {
 			int height_;
 			int concurrentFrames_;
 			unsigned currentFrameIndex_;
+			bool framebufferResized_;
 
 			bool enableValidationLayers_;
 			std::vector<const char*> validationLayerNames_;
