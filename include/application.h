@@ -39,6 +39,11 @@ namespace VT {
 			void InitializeImageViews();
 			void InitializeGraphicsPipeline();
 			void InitializeFramebuffers();
+			void InitializeCommandPool();
+			void InitializeCommandBuffers();
+			void InitializeSemaphores();
+
+			void RenderFrame();
 
 			void SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo);
 
@@ -97,7 +102,13 @@ namespace VT {
 	        VkPipelineLayout pipelineLayout_; // Shader uniform values need to be specified within an object at pipeline creation time.
 	        VkPipeline graphicsPipeline_;
 
-	        std::vector<VkFramebuffer> swapChainFrameBuffers_;
+	        std::vector<VkFramebuffer> swapChainFramebuffers_;
+
+	        VkCommandPool commandPool_;
+	        std::vector<VkCommandBuffer> commandBuffers_;
+
+	        VkSemaphore imageAvailableSemaphore_;
+	        VkSemaphore renderFinishedSemaphore_;
 	};
 
 }
