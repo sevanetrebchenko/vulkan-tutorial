@@ -13,7 +13,9 @@ namespace VT {
 
 	Application::Application(int width, int height) : width_(width),
 													  height_(height),
-													  enableValidationLayers_(true)
+													  enableValidationLayers_(true),
+													  concurrentFrames_(2),
+													  currentFrameIndex_(0)
 													  {
 	}
 
@@ -47,7 +49,7 @@ namespace VT {
 		InitializeFramebuffers();
 		InitializeCommandPool();
 		InitializeCommandBuffers();
-		InitializeSemaphores();
+		InitializeSynchronizationObjects();
 	}
 
 	void Application::Update() {
@@ -60,8 +62,11 @@ namespace VT {
 	}
 
 	void Application::Shutdown() {
-	    vkDestroySemaphore(logicalDevice_, renderFinishedSemaphore_, nullptr);
-	    vkDestroySemaphore(logicalDevice_, imageAvailableSemaphore_, nullptr);
+	    for (int i = 0; i < concurrentFrames_; ++i) {
+	        vkDestroySemaphore(logicalDevice_, renderFinishedSemaphores_[i], nullptr);
+	        vkDestroySemaphore(logicalDevice_, imageAvailableSemaphores_[i], nullptr);
+            vkDestroyFence(logicalDevice_, inFlightFences_[i], nullptr);
+	    }
 
 	    vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
 
@@ -755,30 +760,54 @@ namespace VT {
         }
 	}
 
-	void Application::InitializeSemaphores() {
+	void Application::InitializeSynchronizationObjects() {
+        imageAvailableSemaphores_.resize(concurrentFrames_);
+        renderFinishedSemaphores_.resize(concurrentFrames_);
+        inFlightFences_.resize(concurrentFrames_);
+        imagesInFlight_.resize(concurrentFrames_, VK_NULL_HANDLE); // No initialization necessary.
+
 	    VkSemaphoreCreateInfo semaphoreInfo { };
 	    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-	    if (vkCreateSemaphore(logicalDevice_, &semaphoreInfo, nullptr, &imageAvailableSemaphore_) != VK_SUCCESS || vkCreateSemaphore(logicalDevice_, &semaphoreInfo, nullptr, &renderFinishedSemaphore_) != VK_SUCCESS) {
-	        throw std::runtime_error("Failed to create semaphores.");
+	    VkFenceCreateInfo fenceInfo { };
+	    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; // Create fences in a signaled state so that RenderFrame properly resets without locking up.
+
+	    for (int i = 0; i < concurrentFrames_; ++i) {
+	        if (vkCreateSemaphore(logicalDevice_, &semaphoreInfo, nullptr, &imageAvailableSemaphores_[i]) != VK_SUCCESS ||
+	            vkCreateSemaphore(logicalDevice_, &semaphoreInfo, nullptr, &renderFinishedSemaphores_[i]) != VK_SUCCESS ||
+	            vkCreateFence(logicalDevice_, &fenceInfo, nullptr, &inFlightFences_[i])) {
+	            throw std::runtime_error("Failed to create synchronization for a frame.");
+	        }
 	    }
 	}
 
 	void Application::RenderFrame() {
+	    vkWaitForFences(logicalDevice_, 1, &inFlightFences_[currentFrameIndex_], VK_TRUE, UINT64_MAX); // Wait for all fences to finish.
+
 	    // 1. Acquire an image from the swap chain.
 	    unsigned imageIndex;
 	    vkAcquireNextImageKHR(logicalDevice_,
                               swapChain_,
                               UINT64_MAX, // Using max uint64 disables timeout.
-                              imageAvailableSemaphore_, // When this semaphore is signaled, we can start drawing the image.
+                              imageAvailableSemaphores_[currentFrameIndex_], // When this semaphore is signaled, we can start drawing the image.
                               VK_NULL_HANDLE,
                               &imageIndex);
+
+	    // There may be more concurrent frames than swapchain images, or AcquireNextImage may return indices out of order.
+	    // Ensure retrieved index is not on an image that is currently in flight.
+	    if (imagesInFlight_[imageIndex] != VK_NULL_HANDLE) {
+	        // Image is currently in use.
+	        vkWaitForFences(logicalDevice_, 1, &imagesInFlight_[imageIndex], VK_TRUE, UINT64_MAX);
+	    }
+	    // Mark the image as in use.
+	    imagesInFlight_[imageIndex] = inFlightFences_[imageIndex];
 
 	    // 2. Execute the command buffer with that image as attachment in the framebuffer.
 	    VkSubmitInfo submitInfo { };
 	    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-	    VkSemaphore waitSemaphores[] = { imageAvailableSemaphore_ }; // Specifies which semaphores to wait on before execution begins.
+	    VkSemaphore waitSemaphores[] = { imageAvailableSemaphores_[currentFrameIndex_] }; // Specifies which semaphores to wait on before execution begins.
 	    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT }; // Specifies which stages of the pipeline to wait on.
                                                                                                // Wait on the stage where writing color to the image is possible.
 	    submitInfo.waitSemaphoreCount = 1;
@@ -791,13 +820,16 @@ namespace VT {
 	    submitInfo.pCommandBuffers = &commandBuffers_[imageIndex];
 
 	    // Specify which semaphores to signal one the command buffer execution has terminated.
-	    VkSemaphore signalSemaphores[] = { renderFinishedSemaphore_ };
+	    VkSemaphore signalSemaphores[] = { renderFinishedSemaphores_[currentFrameIndex_] };
 	    submitInfo.signalSemaphoreCount = 1;
 	    submitInfo.pSignalSemaphores = signalSemaphores;
 
+	    vkResetFences(logicalDevice_, 1, &inFlightFences_[currentFrameIndex_]); // Returns the fence to an unsignaled state.
+
 	    // Submit command buffers to be executed.
 	    // Allows for multiple command buffer submit info structs to be submitted for higher workloads.
-	    if (vkQueueSubmit(graphicsQueue_, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+	    // Takes a fence that should be signaled
+	    if (vkQueueSubmit(graphicsQueue_, 1, &submitInfo, inFlightFences_[currentFrameIndex_]) != VK_SUCCESS) {
 	        throw std::runtime_error("Failed to submit rendering command buffer.");
 	    }
 
@@ -818,6 +850,8 @@ namespace VT {
 	    if (vkQueuePresentKHR(presentationQueue_, &presentInfo) != VK_SUCCESS) {
 	        // Presentation error does not necessarily mean program termination.
 	    }
+
+	    currentFrameIndex_ = (currentFrameIndex_ + 1) & concurrentFrames_;
 	}
 
 	// Assumes messenger info has been initialized.

@@ -41,7 +41,7 @@ namespace VT {
 			void InitializeFramebuffers();
 			void InitializeCommandPool();
 			void InitializeCommandBuffers();
-			void InitializeSemaphores();
+			void InitializeSynchronizationObjects();
 
 			void RenderFrame();
 
@@ -75,6 +75,8 @@ namespace VT {
 			// Data.
 			int width_;
 			int height_;
+			int concurrentFrames_;
+			unsigned currentFrameIndex_;
 
 			bool enableValidationLayers_;
 			std::vector<const char*> validationLayerNames_;
@@ -107,8 +109,10 @@ namespace VT {
 	        VkCommandPool commandPool_;
 	        std::vector<VkCommandBuffer> commandBuffers_;
 
-	        VkSemaphore imageAvailableSemaphore_;
-	        VkSemaphore renderFinishedSemaphore_;
+	        std::vector<VkSemaphore> imageAvailableSemaphores_;
+	        std::vector<VkSemaphore> renderFinishedSemaphores_;
+	        std::vector<VkFence> inFlightFences_;
+	        std::vector<VkFence> imagesInFlight_; // Refers to images in use by their fences.
 	};
 
 }
