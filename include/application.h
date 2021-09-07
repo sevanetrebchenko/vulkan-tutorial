@@ -38,7 +38,6 @@ namespace VT {
 			void InitializeSwapChain();
 			void InitializeImageViews();
 			void InitializeGraphicsPipeline();
-			void InitializeShaders();
 
 			void SetupDebugMessengerUtils(VkDebugUtilsMessengerCreateInfoEXT& messengerInfo);
 
@@ -93,7 +92,9 @@ namespace VT {
             std::vector<VkImage> swapChainImages_; // Created and cleaned up with swapchain creation/destruction.
 	        std::vector<VkImageView> swapChainImageViews_;
 
+	        VkRenderPass renderPass_;
 	        VkPipelineLayout pipelineLayout_; // Shader uniform values need to be specified within an object at pipeline creation time.
+	        VkPipeline graphicsPipeline_;
 	};
 
 }

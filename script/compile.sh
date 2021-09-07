@@ -32,8 +32,8 @@ if [ -z "$1" ] || [ -z "$2" ]; then
     exit 0
 fi
 
-# Clear shader binary directory.
-[ -d "$2" ] && ( echo "Clearing shader binary directory." && rm "$2"/* ) || ( mkdir "$2" )
+# Clear/create shader binary directory.
+[ -d "$2" ] && ( echo "Clearing shader binary directory." && rm "$2"/* ) || ( echo "Clearing shader binary directory." && mkdir "$2" )
 
 # Compile GLSL shader code into SPIR-V binary.
 Compile triangle.vert triangle_vert.spv
