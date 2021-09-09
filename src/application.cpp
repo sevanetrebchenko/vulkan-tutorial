@@ -147,7 +147,8 @@ namespace VT {
 
 		// Get supported validation layers.
 		std::vector<const char*> validationLayerNames {
-			"VK_LAYER_KHRONOS_validation"
+			"VK_LAYER_KHRONOS_validation",
+			// "VK_LAYER_LUNARG_api_dump"
 		};
 
 		if (enableValidationLayers_) {
@@ -316,7 +317,7 @@ namespace VT {
         createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // Blending with other images.
         createInfo.presentMode = presentationMode;
         createInfo.clipped = VK_TRUE; // Color of obscured pixels does not matter.
-        createInfo.oldSwapchain = nullptr; // Swapping between different swapchains requires the old one to be stored.
+        createInfo.oldSwapchain = VK_NULL_HANDLE; // Swapping between different swapchains requires the old one to be stored.
 
         if (vkCreateSwapchainKHR(logicalDevice_, &createInfo, nullptr, &swapChain_) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create swapchain.");
@@ -1106,6 +1107,7 @@ namespace VT {
 		vkGetPhysicalDeviceFeatures(physicalDevice, &deviceFeatures);
 
 		std::cout << "Found physical device: " << deviceProperties.deviceName << std::endl;
+		std::cout << "Supported Vulkan version" << deviceProperties.apiVersion << std::endl;
 
 		QueueFamilyIndexData queueFamilyIndices = FindQueueFamilies(physicalDevice);
 
