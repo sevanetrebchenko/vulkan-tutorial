@@ -6,7 +6,7 @@ using namespace VT;
 #include <iostream>
 
 int main() {
-	Application app(1920, 1080);
+	Application app(800, 640);
 
 	try {
 		app.Run();

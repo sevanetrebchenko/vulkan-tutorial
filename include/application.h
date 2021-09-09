@@ -78,6 +78,8 @@ namespace VT {
             VkExtent2D ChooseSwapChainExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities);
 
             VkShaderModule CreateShaderModule(const std::vector<char>& shaderCode);
+			void CreateBuffer(VkDeviceSize bufferSize, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+			void CopyBufferTo(VkBuffer source, VkBuffer destination, VkDeviceSize bufferSize);
 
 			// Data.
 			int width_;

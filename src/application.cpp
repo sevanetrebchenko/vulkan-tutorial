@@ -802,48 +802,27 @@ namespace VT {
 			{ { -0.5f, 0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }
 		};
 
-		VkBufferCreateInfo bufferInfo { };
-		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		bufferInfo.size = sizeof(vertices_[0]) * vertices_.size(); // Byte size of vertex buffer.
+		VkDeviceSize bufferSize = sizeof(vertices_[0]) * vertices_.size();
 
-		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT; // Buffer will be used as a vertex buffer.
-		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // Buffer will only be used from the graphics queue.
-		bufferInfo.flags = 0;
+		VkBuffer stagingBuffer; // Staging buffer used as the source for memory transfer operations.
+		VkDeviceMemory stagingBufferMemory;
+		CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
-		if (vkCreateBuffer(logicalDevice_, &bufferInfo, nullptr, &vertexBuffer_) != VK_SUCCESS) {
-			throw std::runtime_error("Failed to create vertex buffer.");
-		}
+		void* data;
+		vkBindBufferMemory(logicalDevice_, stagingBuffer, stagingBufferMemory, 0);
+		vkMapMemory(logicalDevice_, stagingBufferMemory, 0, bufferSize, 0, &data);
+		memcpy(data, vertices_.data(), (size_t) bufferSize);
+		vkUnmapMemory(logicalDevice_, stagingBufferMemory);
 
-		// Vertex buffer allocation info.
-		// Get buffer memory requirements.
-		VkMemoryRequirements memoryRequirements; // Contains total size of the buffer, offset where buffer data begins, and flags to depict memory types that are suitable for buffer usage.
-		vkGetBufferMemoryRequirements(logicalDevice_, vertexBuffer_, &memoryRequirements);
+		// Vertex buffer used as the destination for memory transfer operations.
+		CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer_, vertexBufferMemory_);
 
-		VkMemoryAllocateInfo allocInfo { };
-		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-		allocInfo.allocationSize = memoryRequirements.size;
+		vkBindBufferMemory(logicalDevice_, vertexBuffer_, vertexBufferMemory_, 0);
+		CopyBufferTo(stagingBuffer, vertexBuffer_, bufferSize);
 
-		// VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT - Allow buffer memory to be mapped from the CPU (vertex data).
-		// VK_MEMORY_PROPERTY_HOST_COHERENT_BIT - Allocated memory heap is host coherent, meaning mapped memory layout always matches that of the allocated memory.
-		allocInfo.memoryTypeIndex = GetMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-
-		if (vkAllocateMemory(logicalDevice_, &allocInfo, nullptr, &vertexBufferMemory_) != VK_SUCCESS) {
-			throw std::runtime_error("Failed to allocate vertex buffer memory.");
-		}
-
-		// Bind buffer memory to buffer.
-		vkBindBufferMemory(logicalDevice_, vertexBuffer_, vertexBufferMemory_, 0); // Offset into buffer must be divisible by memoryRequirements.alignment.
-
-		// Map buffer memory into CPU space to be able to push vertex data.
-		void* vertexData;
-
-		// Allows access to buffer memory from offset (0) to size (bufferInfo.size).
-		vkMapMemory(logicalDevice_, vertexBufferMemory_, 0, bufferInfo.size, 0, &vertexData);
-		memcpy(vertexData, vertices_.data(), bufferInfo.size);
-		vkUnmapMemory(logicalDevice_, vertexBufferMemory_);
-		// Also possible to vkFlushMemoryRanges after writing memory and vkInvalidateMemoryRanges before reading from mapped memory (if host coherency is not enabled).
-		// Flushing memory does not guarantee the data is visible on the GPU - data is guaranteed to be submitted by the next call to VkQueueSubmit.
+		// Buffer is one time use only, free memory.
+		vkDestroyBuffer(logicalDevice_, stagingBuffer, nullptr);
+		vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
 	}
 
 	void Application::RenderFrame() {
@@ -1379,5 +1358,64 @@ namespace VT {
 
 	    return shaderModule;
     }
+
+	void Application::CreateBuffer(VkDeviceSize bufferSize, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
+		VkBufferCreateInfo bufferInfo{};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.size = bufferSize;
+		bufferInfo.usage = usageFlags;
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		if (vkCreateBuffer(logicalDevice_, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create buffer.");
+		}
+
+		VkMemoryRequirements memRequirements;
+		vkGetBufferMemoryRequirements(logicalDevice_, buffer, &memRequirements);
+
+		VkMemoryAllocateInfo allocInfo { };
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = GetMemoryType(memRequirements.memoryTypeBits, memoryFlags);
+
+		if (vkAllocateMemory(logicalDevice_, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to allocate buffer memory.");
+		}
+	}
+
+	void Application::CopyBufferTo(VkBuffer source, VkBuffer destination, VkDeviceSize bufferSize) {
+		VkCommandBufferAllocateInfo allocInfo { };
+		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		allocInfo.commandPool = commandPool_;
+		allocInfo.commandBufferCount = 1;
+
+		VkCommandBuffer commandBuffer;
+		vkAllocateCommandBuffers(logicalDevice_, &allocInfo, &commandBuffer);
+
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		// Begin recording memory transfer operation (one time submit operation).
+		vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+		VkBufferCopy copyRegion { };
+		copyRegion.srcOffset = 0;
+		copyRegion.dstOffset = 0;
+		copyRegion.size = bufferSize;
+		vkCmdCopyBuffer(commandBuffer, source, destination, 1, &copyRegion);
+		vkEndCommandBuffer(commandBuffer);
+
+		VkSubmitInfo submitInfo { };
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffer;
+
+		vkQueueSubmit(graphicsQueue_, 1, &submitInfo, VK_NULL_HANDLE); // Graphics queue implicitly supports transfer operations. // TODO: separate into transfer queue.
+		vkQueueWaitIdle(graphicsQueue_);
+
+		vkFreeCommandBuffers(logicalDevice_, commandPool_, 1, &commandBuffer);
+	}
 
 }
