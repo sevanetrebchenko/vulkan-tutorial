@@ -16,7 +16,7 @@ function Compile() {
     local bin="${commandLineArguments[1]}"/"$2"
 
     # shellcheck disable=SC2086
-    bin/glslc.exe "${src}" -o "${bin}"
+    ../bin/glslc.exe "${src}" -o "${bin}"
 
     local message="Compiled ${src} into ${bin}"
     echo "${message}"

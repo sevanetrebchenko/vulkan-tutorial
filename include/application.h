@@ -11,6 +11,7 @@
 
 #include "physical_device_data.h"
 #include "swap_chain_support_data.h"
+#include "vertex.h"
 
 namespace VT {
 
@@ -43,6 +44,7 @@ namespace VT {
 			void InitializeCommandPool();
 			void InitializeCommandBuffers();
 			void InitializeSynchronizationObjects();
+			void InitializeVertexBuffers();
 
 			void RenderFrame();
 
@@ -59,6 +61,7 @@ namespace VT {
 			void GetSupportedPhysicalDeviceExtensions(const VkPhysicalDevice& physicalDevice, std::vector<VkExtensionProperties>& extensions);
             void GetSupportedSurfaceFormats(const VkPhysicalDevice& physicalDevice, std::vector<VkSurfaceFormatKHR>& surfaceFormatData);
             void GetSupportedPresentationModes(const VkPhysicalDevice& physicalDevice, std::vector<VkPresentModeKHR>& presentationModeData);
+			unsigned GetMemoryType(unsigned typeFilter, VkMemoryPropertyFlags memoryPropertyFlags);
 
 			bool CheckInstanceExtensions(const std::vector<VkExtensionProperties>& supportedExtensions, const std::vector<const char*>& desiredExtensions);
 			bool CheckValidationLayers(std::vector<const char*>& validationLayerData);
@@ -118,6 +121,10 @@ namespace VT {
 	        std::vector<VkSemaphore> renderFinishedSemaphores_;
 	        std::vector<VkFence> inFlightFences_;
 	        std::vector<VkFence> imagesInFlight_; // Refers to images in use by their fences.
+
+	        std::vector<Vertex> vertices_;
+	        VkBuffer vertexBuffer_;
+	        VkDeviceMemory vertexBufferMemory_;
 	};
 
 }

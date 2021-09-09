@@ -7,6 +7,7 @@ set(SOURCE_FILES
         src/main.cpp
         src/application.cpp
         src/queue_family_index_data.cpp
+        src/vertex.cpp
     )
 
 add_executable(vulkan-tutorial ${SOURCE_FILES})

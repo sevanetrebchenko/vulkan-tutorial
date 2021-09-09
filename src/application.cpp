@@ -56,6 +56,7 @@ namespace VT {
 		InitializeGraphicsPipeline();
 		InitializeFramebuffers();
 		InitializeCommandPool();
+		InitializeVertexBuffers();
 		InitializeCommandBuffers();
 		InitializeSynchronizationObjects();
 	}
@@ -71,6 +72,9 @@ namespace VT {
 
 	void Application::Shutdown() {
 	    DestroySwapChain();
+
+	    vkDestroyBuffer(logicalDevice_, vertexBuffer_, nullptr);
+	    vkFreeMemory(logicalDevice_, vertexBufferMemory_, nullptr);
 
 	    for (int i = 0; i < concurrentFrames_; ++i) {
 	        vkDestroySemaphore(logicalDevice_, renderFinishedSemaphores_[i], nullptr);
@@ -403,11 +407,15 @@ namespace VT {
 	    // Vertex data.
 	    // Provides details about the format of the vertex data passed to the fragment shader.
 	    VkPipelineVertexInputStateCreateInfo vertexInputInfo { };
+
+	    VkVertexInputBindingDescription vertexBindingDescription = Vertex::GetBindingDescription();
+	    std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions = Vertex::GetAttributeDescriptions();
+
 	    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	    vertexInputInfo.vertexBindingDescriptionCount = 0; // Spacing between the data, whether data is per vertex or per instance.
-	    vertexInputInfo.pVertexBindingDescriptions = nullptr; // Types of attributes passed to the vertex shader, which bindings, which offsets to load from.
-	    vertexInputInfo.vertexAttributeDescriptionCount = 0;
-	    vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+	    vertexInputInfo.vertexBindingDescriptionCount = 1; // Spacing between the data, whether data is per vertex or per instance.
+	    vertexInputInfo.pVertexBindingDescriptions = &vertexBindingDescription;
+	    vertexInputInfo.vertexAttributeDescriptionCount = vertexAttributeDescriptions.size();
+	    vertexInputInfo.pVertexAttributeDescriptions = vertexAttributeDescriptions.data(); // Types of attributes passed to the vertex shader, which bindings, which offsets to load from.
 
 	    // Input assembly.
 	    // Specifies what kind of geometry will be drawn from the provided vertices.
@@ -746,8 +754,13 @@ namespace VT {
 
             vkCmdBindPipeline(commandBuffers_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline_);
 
+            // Bind vertex buffer.
+            VkBuffer vertexBuffers[] = { vertexBuffer_ };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(commandBuffers_[i], 0, 1, vertexBuffers, offsets);
+
             vkCmdDraw(commandBuffers_[i],
-                      3,  // 3 vertices.
+                      vertices_.size(),
                       1, // Don't use instanced rendering.
                       0, // gl_VertexIndex starting value.
                       0); // gl_InstanceIndex starting value.
@@ -780,6 +793,57 @@ namespace VT {
 	            throw std::runtime_error("Failed to create synchronization for a frame.");
 	        }
 	    }
+	}
+
+	void Application::InitializeVertexBuffers() {
+		vertices_ = std::vector<Vertex> {
+			{ { 0.0f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
+			{ { 0.5f, 0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+			{ { -0.5f, 0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }
+		};
+
+		VkBufferCreateInfo bufferInfo { };
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.size = sizeof(vertices_[0]) * vertices_.size(); // Byte size of vertex buffer.
+
+		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT; // Buffer will be used as a vertex buffer.
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // Buffer will only be used from the graphics queue.
+		bufferInfo.flags = 0;
+
+		if (vkCreateBuffer(logicalDevice_, &bufferInfo, nullptr, &vertexBuffer_) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create vertex buffer.");
+		}
+
+		// Vertex buffer allocation info.
+		// Get buffer memory requirements.
+		VkMemoryRequirements memoryRequirements; // Contains total size of the buffer, offset where buffer data begins, and flags to depict memory types that are suitable for buffer usage.
+		vkGetBufferMemoryRequirements(logicalDevice_, vertexBuffer_, &memoryRequirements);
+
+		VkMemoryAllocateInfo allocInfo { };
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = memoryRequirements.size;
+
+		// VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT - Allow buffer memory to be mapped from the CPU (vertex data).
+		// VK_MEMORY_PROPERTY_HOST_COHERENT_BIT - Allocated memory heap is host coherent, meaning mapped memory layout always matches that of the allocated memory.
+		allocInfo.memoryTypeIndex = GetMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+
+		if (vkAllocateMemory(logicalDevice_, &allocInfo, nullptr, &vertexBufferMemory_) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to allocate vertex buffer memory.");
+		}
+
+		// Bind buffer memory to buffer.
+		vkBindBufferMemory(logicalDevice_, vertexBuffer_, vertexBufferMemory_, 0); // Offset into buffer must be divisible by memoryRequirements.alignment.
+
+		// Map buffer memory into CPU space to be able to push vertex data.
+		void* vertexData;
+
+		// Allows access to buffer memory from offset (0) to size (bufferInfo.size).
+		vkMapMemory(logicalDevice_, vertexBufferMemory_, 0, bufferInfo.size, 0, &vertexData);
+		memcpy(vertexData, vertices_.data(), bufferInfo.size);
+		vkUnmapMemory(logicalDevice_, vertexBufferMemory_);
+		// Also possible to vkFlushMemoryRanges after writing memory and vkInvalidateMemoryRanges before reading from mapped memory (if host coherency is not enabled).
+		// Flushing memory does not guarantee the data is visible on the GPU - data is guaranteed to be submitted by the next call to VkQueueSubmit.
 	}
 
 	void Application::RenderFrame() {
@@ -1024,6 +1088,22 @@ namespace VT {
 	            throw std::runtime_error("Failed to get physical device presentation modes.");
 	        }
 	    }
+	}
+
+	unsigned Application::GetMemoryType(unsigned int typeFilter, VkMemoryPropertyFlags memoryPropertyFlags) {
+		VkPhysicalDeviceMemoryProperties memoryProperties;
+		vkGetPhysicalDeviceMemoryProperties(physicalDeviceData_.physicalDevice_, &memoryProperties);
+
+		for (unsigned i = 0; i < memoryProperties.memoryTypeCount; i++) {
+			bool matchesMemoryType = typeFilter & (1 << i);
+			bool matchesDesiredMemoryProperties = (memoryProperties.memoryTypes[i].propertyFlags & memoryPropertyFlags) == memoryPropertyFlags;
+
+			if (matchesMemoryType && matchesDesiredMemoryProperties) {
+				return i;
+			}
+		}
+
+		throw std::runtime_error("Failed to find suitable memory type.");
 	}
 
 	bool Application::CheckInstanceExtensions(const std::vector<VkExtensionProperties>& supportedExtensions, const std::vector<const char*>& desiredExtensions) {
