@@ -43,8 +43,11 @@ namespace VT {
 			void InitializeFramebuffers();
 			void InitializeCommandPool();
 			void InitializeCommandBuffers();
+			void InitializeRenderCommandBuffers();
+			void InitializeTransferCommandBuffers();
 			void InitializeSynchronizationObjects();
 			void InitializeVertexBuffers();
+			void InitializeIndexBuffers();
 
 			void RenderFrame();
 
@@ -125,8 +128,11 @@ namespace VT {
 	        std::vector<VkFence> imagesInFlight_; // Refers to images in use by their fences.
 
 	        std::vector<Vertex> vertices_;
+	        std::vector<unsigned> indices_;
 	        VkBuffer vertexBuffer_;
 	        VkDeviceMemory vertexBufferMemory_;
+	        VkBuffer indexBuffer_;
+			VkDeviceMemory indexBufferMemory_;
 	};
 
 }

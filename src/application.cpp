@@ -57,6 +57,7 @@ namespace VT {
 		InitializeFramebuffers();
 		InitializeCommandPool();
 		InitializeVertexBuffers();
+		InitializeIndexBuffers();
 		InitializeCommandBuffers();
 		InitializeSynchronizationObjects();
 	}
@@ -72,6 +73,9 @@ namespace VT {
 
 	void Application::Shutdown() {
 	    DestroySwapChain();
+
+	    vkDestroyBuffer(logicalDevice_, indexBuffer_, nullptr);
+	    vkFreeMemory(logicalDevice_, indexBufferMemory_, nullptr);
 
 	    vkDestroyBuffer(logicalDevice_, vertexBuffer_, nullptr);
 	    vkFreeMemory(logicalDevice_, vertexBufferMemory_, nullptr);
@@ -759,11 +763,15 @@ namespace VT {
             VkDeviceSize offsets[] = { 0 };
             vkCmdBindVertexBuffers(commandBuffers_[i], 0, 1, vertexBuffers, offsets);
 
-            vkCmdDraw(commandBuffers_[i],
-                      vertices_.size(),
-                      1, // Don't use instanced rendering.
-                      0, // gl_VertexIndex starting value.
-                      0); // gl_InstanceIndex starting value.
+            // Bind index buffer.
+            vkCmdBindIndexBuffer(commandBuffers_[i], indexBuffer_, 0, VK_INDEX_TYPE_UINT32);
+
+            vkCmdDrawIndexed(commandBuffers_[i],
+                      		 static_cast<unsigned>(indices_.size()),
+                      		 1, // Don't use instanced rendering.
+                      		 0, // gl_VertexIndex starting value.
+                      		 0, // Offset into index buffer.
+                      		 0); // gl_InstanceIndex starting value.
 
             // Finish command buffer recording.
             vkCmdEndRenderPass(commandBuffers_[i]);
@@ -797,9 +805,10 @@ namespace VT {
 
 	void Application::InitializeVertexBuffers() {
 		vertices_ = std::vector<Vertex> {
-			{ { 0.0f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
-			{ { 0.5f, 0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
-			{ { -0.5f, 0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }
+			{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
+			{ { 0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+			{ { 0.5f, 0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
+			{ { -0.5f, 0.5f, 0.0f }, { 1.0f, 1.0f, 1.0f } }
 		};
 
 		VkDeviceSize bufferSize = sizeof(vertices_[0]) * vertices_.size();
@@ -821,6 +830,32 @@ namespace VT {
 		CopyBufferTo(stagingBuffer, vertexBuffer_, bufferSize);
 
 		// Buffer is one time use only, free memory.
+		vkDestroyBuffer(logicalDevice_, stagingBuffer, nullptr);
+		vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
+	}
+
+	void Application::InitializeIndexBuffers() {
+		indices_ = std::vector<unsigned> {
+			0, 1, 2, 2, 3, 0
+		};
+
+		VkDeviceSize bufferSize = sizeof(indices_[0]) * indices_.size();
+
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
+		CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+		void* data;
+		vkBindBufferMemory(logicalDevice_, stagingBuffer, stagingBufferMemory, 0);
+		vkMapMemory(logicalDevice_, stagingBufferMemory, 0, bufferSize, 0, &data);
+		memcpy(data, indices_.data(), bufferSize);
+		vkUnmapMemory(logicalDevice_, stagingBufferMemory);
+
+		CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer_, indexBufferMemory_);
+
+		vkBindBufferMemory(logicalDevice_, indexBuffer_, indexBufferMemory_, 0);
+		CopyBufferTo(stagingBuffer, indexBuffer_, bufferSize);
+
 		vkDestroyBuffer(logicalDevice_, stagingBuffer, nullptr);
 		vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
 	}
