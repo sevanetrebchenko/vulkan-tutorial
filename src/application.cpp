@@ -8,6 +8,7 @@
 #include <fstream>
 
 #include "application.h"
+#include "ubo.h"
 
 namespace VT {
 
@@ -53,11 +54,15 @@ namespace VT {
 		InitializeLogicalDevice();
 		InitializeSwapChain();
 		InitializeImageViews();
+		InitializeDescriptorSetLayout();
 		InitializeGraphicsPipeline();
 		InitializeFramebuffers();
 		InitializeCommandPool();
 		InitializeVertexBuffers();
 		InitializeIndexBuffers();
+		InitializeUniformBuffers();
+		InitializeDescriptorPool();
+		InitializeDescriptorSets();
 		InitializeCommandBuffers();
 		InitializeSynchronizationObjects();
 	}
@@ -73,6 +78,8 @@ namespace VT {
 
 	void Application::Shutdown() {
 	    DestroySwapChain();
+
+	    vkDestroyDescriptorSetLayout(logicalDevice_, descriptorSetLayout_, nullptr);
 
 	    vkDestroyBuffer(logicalDevice_, indexBuffer_, nullptr);
 	    vkFreeMemory(logicalDevice_, indexBufferMemory_, nullptr);
@@ -468,7 +475,7 @@ namespace VT {
 	    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
 	    rasterizer.lineWidth = 1.0f;
 	    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT; // Back-face culling.
-	    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; // Vertex ordering to appear front-facing.
+	    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; // Vertex ordering to appear front-facing.
 	    rasterizer.depthBiasEnable = VK_FALSE;
 	    rasterizer.depthBiasConstantFactor = 0.0f;
 	    rasterizer.depthBiasClamp = 0.0f;
@@ -526,8 +533,8 @@ namespace VT {
 	    // Pipeline layout.
 	    VkPipelineLayoutCreateInfo pipelineLayoutInfo { };
 	    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	    pipelineLayoutInfo.setLayoutCount = 0;
-	    pipelineLayoutInfo.pSetLayouts = nullptr;
+	    pipelineLayoutInfo.setLayoutCount = 1;
+	    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout_;
 	    pipelineLayoutInfo.pushConstantRangeCount = 0; // Push constants are another way of passing dynamic values into shaders (similar to uniforms).
 	    pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -766,12 +773,8 @@ namespace VT {
             // Bind index buffer.
             vkCmdBindIndexBuffer(commandBuffers_[i], indexBuffer_, 0, VK_INDEX_TYPE_UINT32);
 
-            vkCmdDrawIndexed(commandBuffers_[i],
-                      		 static_cast<unsigned>(indices_.size()),
-                      		 1, // Don't use instanced rendering.
-                      		 0, // gl_VertexIndex starting value.
-                      		 0, // Offset into index buffer.
-                      		 0); // gl_InstanceIndex starting value.
+            vkCmdBindDescriptorSets(commandBuffers_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &descriptorSets_[i], 0, nullptr);
+            vkCmdDrawIndexed(commandBuffers_[i], static_cast<unsigned>(indices_.size()), 1, 0, 0, 0);
 
             // Finish command buffer recording.
             vkCmdEndRenderPass(commandBuffers_[i]);
@@ -818,7 +821,6 @@ namespace VT {
 		CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
 		void* data;
-		vkBindBufferMemory(logicalDevice_, stagingBuffer, stagingBufferMemory, 0);
 		vkMapMemory(logicalDevice_, stagingBufferMemory, 0, bufferSize, 0, &data);
 		memcpy(data, vertices_.data(), (size_t) bufferSize);
 		vkUnmapMemory(logicalDevice_, stagingBufferMemory);
@@ -826,7 +828,6 @@ namespace VT {
 		// Vertex buffer used as the destination for memory transfer operations.
 		CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer_, vertexBufferMemory_);
 
-		vkBindBufferMemory(logicalDevice_, vertexBuffer_, vertexBufferMemory_, 0);
 		CopyBufferTo(stagingBuffer, vertexBuffer_, bufferSize);
 
 		// Buffer is one time use only, free memory.
@@ -846,18 +847,67 @@ namespace VT {
 		CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
 		void* data;
-		vkBindBufferMemory(logicalDevice_, stagingBuffer, stagingBufferMemory, 0);
 		vkMapMemory(logicalDevice_, stagingBufferMemory, 0, bufferSize, 0, &data);
 		memcpy(data, indices_.data(), bufferSize);
 		vkUnmapMemory(logicalDevice_, stagingBufferMemory);
 
 		CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer_, indexBufferMemory_);
 
-		vkBindBufferMemory(logicalDevice_, indexBuffer_, indexBufferMemory_, 0);
 		CopyBufferTo(stagingBuffer, indexBuffer_, bufferSize);
 
 		vkDestroyBuffer(logicalDevice_, stagingBuffer, nullptr);
 		vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
+	}
+
+	void Application::InitializeUniformBuffers() {
+		VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+		uniformBuffers_.resize(swapChainImages_.size());
+		uniformBuffersMemory_.resize(swapChainImages_.size());
+
+		// Initialize uniform buffers, one per swap chain image.
+		for (unsigned i = 0; i < swapChainImages_.size(); ++i) {
+			CreateBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers_[i], uniformBuffersMemory_[i]);
+		}
+	}
+
+	void Application::InitializeDescriptorSetLayout() {
+		VkDescriptorSetLayoutBinding uboLayoutBinding { };
+		uboLayoutBinding.binding = 0;
+		uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uboLayoutBinding.descriptorCount = 1;
+		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		uboLayoutBinding.pImmutableSamplers = nullptr; // Relevant with image sampling.
+
+		VkDescriptorSetLayoutCreateInfo layoutInfo { };
+		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutInfo.bindingCount = 1;
+		layoutInfo.pBindings = &uboLayoutBinding;
+
+		if (vkCreateDescriptorSetLayout(logicalDevice_, &layoutInfo, nullptr, &descriptorSetLayout_) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create descriptor set layout.");
+		}
+
+		VkPipelineLayoutCreateInfo pipelineLayoutInfo { };
+		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		pipelineLayoutInfo.setLayoutCount = 1;
+		pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout_;
+	}
+
+	void Application::InitializeDescriptorPool() {
+		VkDescriptorPoolSize poolSize { };
+		poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		poolSize.descriptorCount = static_cast<unsigned>(swapChainImages_.size());
+
+		VkDescriptorPoolCreateInfo poolInfo { };
+		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolInfo.poolSizeCount = 1;
+		poolInfo.pPoolSizes = &poolSize;
+		poolInfo.maxSets = static_cast<unsigned>(swapChainImages_.size());
+
+		if (vkCreateDescriptorPool(logicalDevice_, &poolInfo, nullptr, &descriptorPool_) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create descriptor pool.");
+		}
 	}
 
 	void Application::RenderFrame() {
@@ -891,6 +941,8 @@ namespace VT {
 	    }
 	    // Mark the image as in use.
 	    imagesInFlight_[imageIndex] = inFlightFences_[currentFrameIndex_];
+
+		UpdateUniformBuffer(imageIndex);
 
 	    // 2. Execute the command buffer with that image as attachment in the framebuffer.
 	    VkSubmitInfo submitInfo { };
@@ -969,6 +1021,9 @@ namespace VT {
 	    InitializeImageViews(); // ImageViews depend on swapchain.
 	    InitializeGraphicsPipeline(); // Depends on ImageView formatting + viewport and scissor size.
 	    InitializeFramebuffers();
+	    InitializeUniformBuffers();
+	    InitializeDescriptorPool();
+	    InitializeDescriptorSets();
 	    InitializeCommandBuffers();
 
 	    imagesInFlight_.resize(swapChainImages_.size(), VK_NULL_HANDLE);
@@ -990,6 +1045,13 @@ namespace VT {
 	    }
 
 	    vkDestroySwapchainKHR(logicalDevice_, swapChain_, nullptr); // Needs to be destroyed before the logical device.
+
+	    for (unsigned i = 0; i < swapChainImages_.size(); ++i) {
+	    	vkDestroyBuffer(logicalDevice_, uniformBuffers_[i], nullptr);
+	    	vkFreeMemory(logicalDevice_, uniformBuffersMemory_[i], nullptr);
+	    }
+
+	    vkDestroyDescriptorPool(logicalDevice_, descriptorPool_, nullptr);
 	}
 
 	// Assumes messenger info has been initialized.
@@ -1416,6 +1478,8 @@ namespace VT {
 		if (vkAllocateMemory(logicalDevice_, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to allocate buffer memory.");
 		}
+
+		vkBindBufferMemory(logicalDevice_, buffer, bufferMemory, 0);
 	}
 
 	void Application::CopyBufferTo(VkBuffer source, VkBuffer destination, VkDeviceSize bufferSize) {
@@ -1451,6 +1515,61 @@ namespace VT {
 		vkQueueWaitIdle(graphicsQueue_);
 
 		vkFreeCommandBuffers(logicalDevice_, commandPool_, 1, &commandBuffer);
+	}
+
+	void Application::UpdateUniformBuffer(unsigned int currentImage) {
+		static auto startTime = std::chrono::high_resolution_clock::now();
+		auto currentTime = std::chrono::high_resolution_clock::now();
+
+		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+		UniformBufferObject ubo { };
+		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.proj = glm::perspective(glm::radians(45.0f), (float)swapChainExtent_.width / (float) swapChainExtent_.height, 0.1f, 10.0f);
+
+		ubo.proj[1][1] *= -1; // Flip y coordinate.
+
+		void* data;
+		vkMapMemory(logicalDevice_, uniformBuffersMemory_[currentImage], 0, sizeof(ubo), 0, &data);
+		memcpy(data, &ubo, sizeof(ubo));
+		vkUnmapMemory(logicalDevice_, uniformBuffersMemory_[currentImage]);
+	}
+
+	void Application::InitializeDescriptorSets() {
+		std::vector<VkDescriptorSetLayout> layouts(swapChainImages_.size(), descriptorSetLayout_);
+
+		VkDescriptorSetAllocateInfo allocInfo { };
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = descriptorPool_;
+		allocInfo.descriptorSetCount = static_cast<unsigned>(swapChainImages_.size());
+		allocInfo.pSetLayouts = layouts.data();
+
+		descriptorSets_.resize(swapChainImages_.size());
+
+		if (vkAllocateDescriptorSets(logicalDevice_, &allocInfo, descriptorSets_.data()) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create descriptor sets.");
+		}
+
+		for (unsigned i = 0; i < swapChainImages_.size(); ++i) {
+			VkDescriptorBufferInfo bufferInfo { };
+			bufferInfo.buffer = uniformBuffers_[i];
+			bufferInfo.offset = 0;
+			bufferInfo.range = sizeof(UniformBufferObject);
+
+			VkWriteDescriptorSet descriptorWrite { };
+			descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrite.dstSet = descriptorSets_[i];
+			descriptorWrite.dstBinding = 0;
+			descriptorWrite.dstArrayElement = 0;
+			descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			descriptorWrite.descriptorCount = 1;
+			descriptorWrite.pBufferInfo = &bufferInfo;
+			descriptorWrite.pImageInfo = nullptr;
+			descriptorWrite.pTexelBufferView = nullptr;
+
+			vkUpdateDescriptorSets(logicalDevice_, 1, &descriptorWrite, 0, nullptr);
+		}
 	}
 
 }

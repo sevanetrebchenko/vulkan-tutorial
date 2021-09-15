@@ -5,6 +5,12 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#define GLM_FORCE_RADIANS
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <chrono>
+
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <string>
@@ -43,11 +49,13 @@ namespace VT {
 			void InitializeFramebuffers();
 			void InitializeCommandPool();
 			void InitializeCommandBuffers();
-			void InitializeRenderCommandBuffers();
-			void InitializeTransferCommandBuffers();
 			void InitializeSynchronizationObjects();
 			void InitializeVertexBuffers();
 			void InitializeIndexBuffers();
+			void InitializeUniformBuffers();
+			void InitializeDescriptorSetLayout();
+			void InitializeDescriptorPool();
+			void InitializeDescriptorSets();
 
 			void RenderFrame();
 
@@ -83,6 +91,7 @@ namespace VT {
             VkShaderModule CreateShaderModule(const std::vector<char>& shaderCode);
 			void CreateBuffer(VkDeviceSize bufferSize, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 			void CopyBufferTo(VkBuffer source, VkBuffer destination, VkDeviceSize bufferSize);
+			void UpdateUniformBuffer(unsigned currentImage);
 
 			// Data.
 			int width_;
@@ -113,6 +122,7 @@ namespace VT {
             std::vector<VkImage> swapChainImages_; // Created and cleaned up with swapchain creation/destruction.
 	        std::vector<VkImageView> swapChainImageViews_;
 
+	        VkDescriptorSetLayout descriptorSetLayout_;
 	        VkRenderPass renderPass_;
 	        VkPipelineLayout pipelineLayout_; // Shader uniform values need to be specified within an object at pipeline creation time.
 	        VkPipeline graphicsPipeline_;
@@ -133,6 +143,12 @@ namespace VT {
 	        VkDeviceMemory vertexBufferMemory_;
 	        VkBuffer indexBuffer_;
 			VkDeviceMemory indexBufferMemory_;
+
+			std::vector<VkBuffer> uniformBuffers_;
+			std::vector<VkDeviceMemory> uniformBuffersMemory_;
+
+			VkDescriptorPool descriptorPool_;
+			std::vector<VkDescriptorSet> descriptorSets_;
 	};
 
 }
